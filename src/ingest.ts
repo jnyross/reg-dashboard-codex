@@ -211,39 +211,39 @@ export async function runIngestionPipeline(
       sourcesSuccess += 1;
     }
 
-    for (const item of crawlResult.items) {
-      itemsDiscovered += 1;
-      try {
-        console.log(`  Analyzing [${itemsDiscovered}/${crawlResult.items.length}]: ${item.title.slice(0, 80)}...`);
-        const analysis = await analyzeCrawledItem(item);
-        const upsertStatus = await upsertAnalysedItem(db, item, analysis);
+    // Process items in concurrent batches of 5
+    const BATCH_SIZE = 5;
+    for (let i = 0; i < crawlResult.items.length; i += BATCH_SIZE) {
+      const batch = crawlResult.items.slice(i, i + BATCH_SIZE);
+      const results = await Promise.allSettled(
+        batch.map(async (item, idx) => {
+          const itemNum = i + idx + 1;
+          itemsDiscovered += 1;
+          console.log(`  Analyzing [${itemNum}/${crawlResult.items.length}]: ${item.title.slice(0, 80)}...`);
+          const analysis = await analyzeCrawledItem(item);
+          return { item, analysis };
+        })
+      );
 
-        if (upsertStatus === "created") {
-          eventsCreated += 1;
-          console.log(`    → Created (relevant)`);
-        }
-
-        if (upsertStatus === "updated") {
-          eventsUpdated += 1;
-          console.log(`    → Updated`);
-        }
-
-        if (upsertStatus === "status_changed") {
-          eventsStatusChanged += 1;
-          console.log(`    → Status changed`);
-        }
-
-        if (upsertStatus === "ignored") {
+      for (const result of results) {
+        if (result.status === "rejected") {
           eventsIgnored += 1;
-          console.log(`    → Ignored (not relevant)`);
+          console.log(`    → Error: ${String(result.reason).slice(0, 100)}`);
+          continue;
         }
-      } catch (err) {
-        eventsIgnored += 1;
-        const errMsg = err instanceof Error ? err.message : String(err);
-        console.log(`    → Error: ${errMsg.slice(0, 100)}`);
+        const { item, analysis } = result.value;
+        try {
+          const upsertStatus = await upsertAnalysedItem(db, item, analysis);
+          if (upsertStatus === "created") { eventsCreated += 1; console.log(`    → Created: ${item.title.slice(0, 60)}`); }
+          else if (upsertStatus === "updated") { eventsUpdated += 1; }
+          else if (upsertStatus === "status_changed") { eventsStatusChanged += 1; }
+          else if (upsertStatus === "ignored") { eventsIgnored += 1; }
+        } catch (err) {
+          eventsIgnored += 1;
+          const errMsg = err instanceof Error ? err.message : String(err);
+          console.log(`    → Error: ${errMsg.slice(0, 100)}`);
+        }
       }
-      // Rate limit to avoid overwhelming the API
-      await new Promise(resolve => setTimeout(resolve, 500));
     }
 
     const status: CrawlSummary["status"] = sourcesFailed > 0 ? "partial" : "completed";
