@@ -1,139 +1,79 @@
 {
   "project": {
-    "name": "Global Under-16 Regulation Intelligence Dashboard",
-    "version": "v1-draft",
+    "name": "Real Data Ingestion — Teen Regulation Dashboard",
+    "version": "v2",
     "owner": "John",
-    "primaryUsers": [
-      "Risk Product Teams"
-    ],
-    "goal": "Enable daily decision-making on business responses to global regulations affecting Meta, with emphasis on under-16 provisions."
-  },
-  "execution": {
-    "iteration": 55,
-    "lastUpdated": "2026-02-19",
-    "highestPriorityTask": "No-op continuity iteration 55: synchronize planning artifacts, reconfirm PASS gates, and preserve enabled posture with no behavior changes.",
-    "subtasks": [
-      "DONE: Reconstruct required state artifacts (`plan.md`, `activity.md`, `.ralph/guardrails.md`, `.ralph/specs-lookup-table.md`, `PRD.json`) and the last 50 commits before action.",
-      "DONE: Attempt `/swarm` team self-claim for Researcher, Engineer (TDD), Tester, Reviewer and execute deterministic local role-synthesis fallback when `/swarm` tooling is unavailable.",
-      "DONE: Reconfirm required interaction-worker gate/transition/policy/write-upgrade artifacts remain PASS and internally consistent.",
-      "DONE: Confirm `interaction_worker` runtime remains enabled with enforced one-step rollback and stale-read-only continuity preserved.",
-      "DONE: Record Iteration 55 continuity checkpoint in `plan.md`, `PRD.json`, `activity.md`.",
-      "DONE: Add Iteration 55 traceability row to `.ralph/specs-lookup-table.md`."
-    ],
-    "notes": "Iteration 55 is a no-op continuity checkpoint with no behavior changes. All required gating artifacts remain PASS and control posture remains enabled with one-step rollback and stale-read-only continuity active. `/swarm` is unavailable in this runtime, so role decomposition is executed locally in deterministic fallback mode."
+    "primaryUsers": ["Risk Product Teams"],
+    "goal": "Extend MVP dashboard to ingest real regulatory data from live global sources, with LLM-powered analysis via MiniMax M2.5."
   },
   "constraints": {
     "runtime": "Local Mac mini",
-    "costPolicy": "No practical budget cap; optimize for quality/coverage/timeliness",
-    "v1Access": "Local access acceptable",
-    "futureAccess": "Design for remote access later"
+    "costPolicy": "MiniMax M2.5 via coding plan (free). No budget cap on coverage quality.",
+    "llmProvider": "minimax-coding-plan/MiniMax-M2.5",
+    "trigger": "On-demand (no auto-cron for MVP)",
+    "codexFlags": "-a never --sandbox danger-full-access"
   },
   "scope": {
-    "geography": "Global Meta operating markets from day 1",
-    "usRequirement": "All 50 states + federal",
-    "contentFocus": [
-      "Regulations/laws explicitly targeting under-16 users",
-      "Broader regulations with specific under-16 provisions",
-      "Enforcement actions and regulator guidance relevant to under-16 protections"
-    ],
+    "geography": "Global Meta operating markets (US federal + 50 states, EU/EEA, UK, Australia, Canada, major APAC, LATAM)",
+    "timeHorizon": "Last 5 years through upcoming/proposed",
+    "ageRange": {
+      "primary": "13-18",
+      "earlyTeens": "13-15",
+      "lateTeens": "16-18",
+      "note": "Some legislation treats these as distinct groups"
+    },
     "sources": [
-      "Regulator and government websites (primary)",
-      "Official legislative portals and gazettes",
-      "Regulator/industry blogs",
-      "Trusted legal and industry news"
+      "Official regulator/government websites (tier 5)",
+      "Legal databases and industry publications (tier 4)",
+      "General news websites and online searches (tier 3)",
+      "Grok/X social signal (future, tier 2)"
     ]
   },
-  "ux": {
-    "topBrief": "Short, just-read high-priority section",
-    "detailSection": "Deeper per-item analysis below",
-    "riskIndicator": "1-5 chilli scale (🌶️)",
-    "feedback": "Per-item good/bad rating"
+  "comparison": {
+    "engines": ["codex", "claude", "opencode"],
+    "method": "Same feature brief, independent execution, separate directories",
+    "metric": "Output quality — most complete, production-ready result",
+    "directories": {
+      "codex": "./codex/",
+      "claude": "./claude/",
+      "opencode": "./opencode/"
+    }
   },
-  "scoringModel": {
-    "impactScore": "1-5",
-    "likelihoodScore": "1-5",
-    "confidenceScore": "1-5",
-    "riskChilliScore": "1-5",
-    "notes": "Chilli can be derived from weighted impact+likelihood with confidence adjustment"
-  },
-  "successMetrics": [
-    "Coverage of relevant regulation events",
-    "Time-to-detect after source publication",
-    "False-positive rate",
-    "Analyst trust and usage",
-    "Feedback quality ratio (good vs bad ratings)"
-  ],
   "userStories": [
     {
-      "id": "US-001",
-      "asA": "Risk product analyst",
-      "iWant": "A daily prioritized brief of highest-risk global updates",
-      "soThat": "I can quickly decide what needs immediate business response",
-      "acceptance": [
-        "Top section shows highest-risk items with concise rationale",
-        "Each item includes source links and jurisdiction",
-        "Updated daily with visible timestamp"
-      ],
+      "id": "US-201",
+      "title": "Real source crawling",
+      "description": "Crawl 20+ real regulatory sources across jurisdictions and extract current regulation data",
       "passes": false
     },
     {
-      "id": "US-002",
-      "asA": "Risk product analyst",
-      "iWant": "Full detail for each regulation item",
-      "soThat": "I can understand legal stage, under-16 implications, and required actions",
-      "acceptance": [
-        "Each item shows stage, summary, under-16 trigger, affected products",
-        "Business impact and potential solution requirements are listed",
-        "Change history is visible"
-      ],
+      "id": "US-202",
+      "title": "LLM analysis pipeline",
+      "description": "Use MiniMax M2.5 to score relevance, extract structured fields, generate summaries",
       "passes": false
     },
     {
-      "id": "US-003",
-      "asA": "Policy/risk lead",
-      "iWant": "Coverage across all Meta operating markets including all US states + federal",
-      "soThat": "No critical jurisdiction is missed",
-      "acceptance": [
-        "Source registry includes all target jurisdictions",
-        "Coverage reports show active monitoring health",
-        "Missing source alerts are visible"
-      ],
+      "id": "US-203",
+      "title": "Age bracket tracking",
+      "description": "Identify and display whether regulation targets 13-15, 16-18, or both",
       "passes": false
     },
     {
-      "id": "US-004",
-      "asA": "Risk product analyst",
-      "iWant": "Competitor response snapshots",
-      "soThat": "I can benchmark likely strategic and product responses",
-      "acceptance": [
-        "Competitor actions are tied to source evidence",
-        "Competitor set configurable",
-        "Confidence level attached"
-      ],
+      "id": "US-204",
+      "title": "Dedup and status tracking",
+      "description": "Deduplicate items and track status changes over time",
       "passes": false
     },
     {
-      "id": "US-005",
-      "asA": "System owner",
-      "iWant": "Scored risk and likelihood per item",
-      "soThat": "Prioritization is fast and consistent",
-      "acceptance": [
-        "Impact, likelihood, confidence computed per item",
-        "1-5 chilli display present",
-        "Score rationale available"
-      ],
+      "id": "US-205",
+      "title": "On-demand trigger",
+      "description": "CLI or API endpoint to trigger full crawl + analysis",
       "passes": false
     },
     {
-      "id": "US-006",
-      "asA": "Risk product analyst",
-      "iWant": "A good/bad feedback control per item",
-      "soThat": "The system improves over time",
-      "acceptance": [
-        "Feedback captured with timestamp/user",
-        "Metrics dashboard shows quality trend",
-        "Feedback is used for ranking/scoring adjustments"
-      ],
+      "id": "US-206",
+      "title": "Dashboard real data",
+      "description": "Dashboard shows real data with age bracket filter and source reliability",
       "passes": false
     }
   ]
