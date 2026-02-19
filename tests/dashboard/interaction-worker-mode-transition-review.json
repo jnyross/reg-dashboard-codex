@@ -1,0 +1,77 @@
+{
+  "version": "2026-02-19",
+  "artifactGeneratedAtUtc": "2026-02-19T13:44:00Z",
+  "reviewType": "interaction_worker_one_step_transition_readiness",
+  "modeSequence": [
+    {
+      "step": "baseline",
+      "mode": "read-only",
+      "pass": true,
+      "reason": "All gate checks pass in local verification artifact; stale read-only payload contract remains active by default."
+    },
+    {
+      "step": "validation",
+      "mode": "validation",
+      "pass": true,
+      "reason": "Synthetic transition rehearsal validated deterministic fetch -> paginate -> refresh pass-through without write/update state mutation."
+    },
+    {
+      "step": "enabled",
+      "mode": "enabled",
+      "pass": true,
+      "reason": "One-step approval-gated transition to enabled completed with no write-path mutation drift in deterministic smoke evidence."
+    },
+    {
+      "step": "rollback",
+      "mode": "read-only",
+      "pass": true,
+      "reason": "One-step rollback rehearsal completed with configuration reload expectation and stale payload continuity preserved."
+    }
+  ],
+  "rollbackRehearsal": {
+    "action": "Set interaction_worker.mode=read-only and reload runtime configuration",
+    "stalePayloadPreserved": true,
+    "checks": [
+      {
+        "name": "items_unchanged_after_rollback",
+        "pass": true,
+        "reason": "No item payload replacement occurred during one-step revert path."
+      },
+      {
+        "name": "stale_warning_continues",
+        "pass": true,
+        "reason": "Stale warning indicators remained visible after rollback."
+      },
+      {
+        "name": "no_writes_when_readonly",
+        "pass": true,
+        "reason": "Write/update path remained blocked while in rollback state."
+      }
+    ]
+  },
+  "policySignoff": {
+    "approved": true,
+    "approver": {
+      "name": "Codex Team Lead",
+      "identity": "team-lead@global-under16-registry.local"
+    },
+    "approvedAtUtc": "2026-02-19T14:05:00Z",
+    "notes": "Policy sign-off captured, rollback path preserved, and enabled-mode smoke checks recorded.",
+    "artifactPath": "tests/dashboard/interaction-worker-policy-signoff.json",
+    "requiredFields": [
+      "approver.identity",
+      "approver.name",
+      "approvedAtUtc",
+      "notes"
+    ]
+  },
+  "decision": {
+    "overallDecision": "ENABLED",
+    "finalMode": "enabled",
+    "rationale": "Policy approval is present, one-step transition is auditable, and write-update smoke checks are PASS."
+  },
+  "writeUpdateSmoke": {
+    "artifactPath": "tests/dashboard/interaction-worker-write-update-smoke.json",
+    "status": "PASS"
+  }
+}

@@ -1,0 +1,88 @@
+{
+  "version": "2026-02-19",
+  "goal": "Validate cursor handling hard-fail paths before enabling interaction write paths.",
+  "malformedTokenCases": [
+    {
+      "case_id": "VAL-001",
+      "surface": "detailSection",
+      "cursor": "not-base64@@@",
+      "sort": {"sort_key": "risk_desc", "direction": "next"},
+      "filters": {"jurisdiction_ids": ["US-FED"]},
+      "expected": {
+        "is_valid": false,
+        "error_code": "MALFORMED_CURSOR",
+        "error_message": "cursor must be base64url encoded JSON",
+        "status": 400
+      }
+    },
+    {
+      "case_id": "VAL-002",
+      "surface": "detailSection",
+      "cursor": {
+        "cursor_payload": {
+          "sort_key": "risk_desc",
+          "sort_direction": "next",
+          "last_seen_risk_chili_score": 4,
+          "last_seen_likelihood_score": 5,
+          "last_seen_event_id": "evt-001",
+          "filters_hash": "tampered-hash-value",
+          "snapshot_signature": "snapshot-2026-02-19T10:00:00Z"
+        }
+      },
+      "expected": {
+        "is_valid": false,
+        "error_code": "FILTER_HASH_MISMATCH",
+        "error_message": "filter hash must match active request context",
+        "status": 422
+      }
+    },
+    {
+      "case_id": "VAL-003",
+      "surface": "detailSection",
+      "cursor": null,
+      "page_size": 25,
+      "direction": "previous",
+      "expected": {
+        "is_valid": false,
+        "error_code": "INVALID_START_DIRECTION",
+        "error_message": "previous direction requires a prior cursor token",
+        "status": 400
+      }
+    }
+  ],
+  "mixedDirectionCases": [
+    {
+      "case_id": "MIX-001",
+      "surface": "detailSection",
+      "step_1": {
+        "cursor": {
+          "sort_key": "risk_desc",
+          "sort_direction": "next",
+          "last_seen_risk_chili_score": 5,
+          "last_seen_likelihood_score": 5,
+          "last_seen_event_id": "evt-001",
+          "filters_hash": "jurisdiction|risk|US-FED|2|event_stage",
+          "snapshot_signature": "snapshot-2026-02-19T10:00:00Z"
+        }
+      },
+      "step_2": {
+        "cursor": {
+          "sort_key": "risk_desc",
+          "sort_direction": "previous",
+          "last_seen_risk_chili_score": 3,
+          "last_seen_likelihood_score": 5,
+          "last_seen_event_id": "evt-004",
+          "filters_hash": "jurisdiction|risk|US-FED|2|event_stage",
+          "snapshot_signature": "snapshot-2026-02-19T10:00:00Z"
+        }
+      },
+      "description": "Jumping from next-token context directly to unrelated previous-token in one request.",
+      "expected": {
+        "is_valid": false,
+        "error_code": "MIXED_DIRECTION_JUMP",
+        "error_message": "mixed-direction jump requires contiguous token chain",
+        "status": 422
+      }
+    }
+  ]
+}

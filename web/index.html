@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Global Under-16 Regulation Dashboard</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="error-banner" class="error-banner hidden">
+    <span id="error-message"></span>
+    <button onclick="hideError()">Dismiss</button>
+  </div>
+
+  <header>
+    <div class="header-content">
+      <h1>Global Under-16 Regulation Dashboard</h1>
+      <p class="last-updated">Last updated: <span id="last-updated">Loading...</span></p>
+    </div>
+  </header>
+
+  <main>
+    <section class="brief-section">
+      <h2>Just Read: Priority Briefing</h2>
+      <div id="brief-container" class="brief-grid">
+        <div class="loading">Loading brief...</div>
+      </div>
+    </section>
+
+    <section class="events-section">
+      <div class="section-header">
+        <h2>All Regulation Events</h2>
+        <div class="filters">
+          <div class="filter-group">
+            <label for="jurisdiction-filter">Jurisdiction:</label>
+            <select id="jurisdiction-filter">
+              <option value="">All Jurisdictions</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label for="min-risk-filter">Min Risk:</label>
+            <select id="min-risk-filter">
+              <option value="">Any</option>
+              <option value="1">1+ 🌶️</option>
+              <option value="2">2+ 🌶️</option>
+              <option value="3">3+ 🌶️</option>
+              <option value="4">4+ 🌶️</option>
+              <option value="5">5 🌶️</option>
+            </select>
+          </div>
+          <button onclick="applyFilters()" class="btn-primary">Apply Filters</button>
+          <button onclick="clearFilters()" class="btn-secondary">Clear</button>
+        </div>
+      </div>
+
+      <div id="events-container">
+        <div class="loading">Loading events...</div>
+      </div>
+
+      <div class="pagination" id="pagination">
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

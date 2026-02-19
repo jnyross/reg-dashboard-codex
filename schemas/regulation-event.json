@@ -1,0 +1,271 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://example.com/schemas/regulation-event.json",
+  "title": "RegulationEvent",
+  "description": "Schema for tracking regulatory intelligence events related to under-16 regulations globally",
+  "type": "object",
+  "required": [
+    "id",
+    "title",
+    "jurisdiction",
+    "source",
+    "instrumentType",
+    "lifecycleState",
+    "under16Relevance",
+    "metaRelevance",
+    "scoring",
+    "createdAt",
+    "updatedAt"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier for the regulation event"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Official name of the regulation"
+    },
+    "jurisdiction": {
+      "type": "object",
+      "required": ["country"],
+      "properties": {
+        "country": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Country where the regulation applies"
+        },
+        "state": {
+          "type": ["string", "null"],
+          "description": "State or province where the regulation applies"
+        },
+        "locality": {
+          "type": ["string", "null"],
+          "description": "City or locality where the regulation applies"
+        }
+      },
+      "additionalProperties": false
+    },
+    "source": {
+      "type": "object",
+      "required": ["name", "url", "authorityType", "publishedDate"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Name of the source publication"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to the official source document"
+        },
+        "authorityType": {
+          "type": "string",
+          "enum": ["national", "state", "local", "supranational"],
+          "description": "Type of governing authority"
+        },
+        "publishedDate": {
+          "type": "string",
+          "format": "date",
+          "description": "Date when the regulation was published"
+        }
+      },
+      "additionalProperties": false
+    },
+    "instrumentType": {
+      "type": "string",
+      "enum": ["law", "regulation", "guidance", "enforcement_action", "consultation", "amendment"],
+      "description": "Type of regulatory instrument"
+    },
+    "lifecycleState": {
+      "type": "string",
+      "enum": ["proposed", "introduced", "committee_review", "passed", "enacted", "effective", "amended", "withdrawn", "rejected"],
+      "description": "Current lifecycle state of the regulation"
+    },
+    "effectiveDate": {
+      "type": ["string", "null"],
+      "format": "date",
+      "description": "Date when the regulation becomes effective (optional)"
+    },
+    "under16Relevance": {
+      "type": "object",
+      "required": ["isPrimaryTarget", "specificProvisions", "ageThresholds"],
+      "properties": {
+        "isPrimaryTarget": {
+          "type": "boolean",
+          "description": "Whether the regulation directly targets under-16 users"
+        },
+        "specificProvisions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Specific sections or articles relevant to under-16"
+        },
+        "ageThresholds": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 18
+          },
+          "description": "Age thresholds mentioned in the regulation"
+        }
+      },
+      "additionalProperties": false
+    },
+    "metaRelevance": {
+      "type": "object",
+      "required": ["affectedProducts", "businessImpact", "solutionRequirements"],
+      "properties": {
+        "affectedProducts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Meta products affected by this regulation (e.g., Facebook, Instagram, Quest)"
+        },
+        "businessImpact": {
+          "type": "string",
+          "enum": ["critical", "high", "medium", "low"],
+          "description": "Level of business impact"
+        },
+        "solutionRequirements": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["product", "policy", "legal", "ops"]
+          },
+          "description": "Types of solutions required to address the regulation"
+        }
+      },
+      "additionalProperties": false
+    },
+    "scoring": {
+      "type": "object",
+      "required": ["impactScore", "likelihoodScore", "confidenceScore", "chilliScore"],
+      "properties": {
+        "impactScore": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5,
+          "description": "Potential impact on business (1-5)"
+        },
+        "likelihoodScore": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5,
+          "description": "Likelihood of enactment (1-5)"
+        },
+        "confidenceScore": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5,
+          "description": "Confidence in assessment (1-5)"
+        },
+        "chilliScore": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5,
+          "description": "Derived spiciness/hotness score (1-5)"
+        }
+      },
+      "additionalProperties": false
+    },
+    "competitorIntelligence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["competitor", "response"],
+        "properties": {
+          "competitor": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Name of competitor"
+          },
+          "response": {
+            "type": "string",
+            "description": "Competitor's response to the regulation"
+          },
+          "evidence": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL to evidence of competitor response"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When this intelligence was recorded"
+          }
+        },
+        "additionalProperties": false
+      },
+      "default": []
+    },
+    "changeHistory": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["changedAt", "changeType"],
+        "properties": {
+          "changedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp of the change"
+          },
+          "changedBy": {
+            "type": ["string", "null"],
+            "description": "User or system that made the change"
+          },
+          "changeType": {
+            "type": "string",
+            "enum": ["created", "updated", "status_changed", "amended", "deleted"],
+            "description": "Type of change"
+          },
+          "previousValue": {
+            "description": "Previous value before the change"
+          },
+          "newValue": {
+            "description": "New value after the change"
+          }
+        },
+        "additionalProperties": false
+      },
+      "default": []
+    },
+    "feedback": {
+      "type": ["object", "null"],
+      "properties": {
+        "rating": {
+          "type": "string",
+          "enum": ["good", "bad"],
+          "description": "User rating of the regulation entry"
+        },
+        "timestamp": {
+          "type": ["string", "null"],
+          "format": "date-time",
+          "description": "When the feedback was submitted"
+        },
+        "user": {
+          "type": ["string", "null"],
+          "description": "User who submitted the feedback"
+        }
+      },
+      "additionalProperties": false
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp when the record was created"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp when the record was last updated"
+    }
+  },
+  "additionalProperties": false
+}

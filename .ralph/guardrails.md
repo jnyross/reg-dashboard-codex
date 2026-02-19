@@ -1,0 +1,56 @@
+# Guardrails
+
+- Enforce TDD for implementation tasks.
+- Preserve source provenance for every regulatory item.
+- Prioritize direct official sources over secondary coverage.
+- Never fabricate legal conclusions; mark uncertainty explicitly.
+- Keep under-16 relevance explicit in every item.
+- Respect local legal context and jurisdiction boundaries.
+- Keep objective separation: facts vs interpretation vs recommendation.
+- Every iteration must record: highest-priority unfinished task, all subtasks, and completion deltas in `activity.md`.
+- Before implementing write paths, require JSON schema stability notes in `PRD.json` execution metadata.
+- Source registry coverage for US must be deterministic: include `US-FED` plus all 50 US states, no duplicates, and explicit codes.
+- Source registry entries must include machine-readable keys required by ingestion: `source_id`, `jurisdiction_ids`, `authority_type`, `ingest_url`, `feed_type`, `frequency`, and `status`.
+- Add explicit rollback guard: if US coverage count != 51 or schema validation fails, ingestion workers remain read-only.
+- For any implementation writing `RegulationEvent`, enforce strict schema validation of `schemas.regulationEvent` before commit-side side effects.
+- `event_id` format must match `re_[a-zA-Z0-9_-]+` and be globally unique per jurisdiction-day for replay determinism.
+- `source_systems` entries must include immutable provenance and `raw_fingerprint` to prevent silent overwrite of source text.
+- `under16_trigger.is_under16_applicable` must be boolean and cannot be null; when true, at least one `trigger_type` and one `evidence_clause` must be present.
+- Scoring fields must be integer 1-5, and `risk_chilli_score` must be present whenever `impact_score`,`likelihood_score`, and `confidence_score` are complete.
+- Lifecycle transitions must follow the approved state graph in PRD `schemas.regulationEvent.lifecycleTransitions`; invalid transitions must be blocked.
+- Ingestion must be deterministic and idempotent by contract: sort by `source_id`, then by canonical timestamps, and use the same dedup key order (`source_id+source_event_id`, `sourceFingerprint`, `canonicalSignature`, title/authority/date fallback).
+- Any run that encounters schema validation failures for incoming events must never persist event state updates; mark run as degraded-readonly and emit a conflict/quarantine report instead.
+- Conflict policy: if `source_fingerprint` matches multiple active events, write a manual-review marker and avoid automatic merge/overwrite.
+- `change_type` in `lineage` must never be null; if no rule matches, treat as `noop` and append a diagnostics entry.
+- Change transitions from `withdrawn` must resolve to lifecycle terminal state `retracted` with full provenance and timestamp in change record.
+- Dashboard rendering must be deterministic and side-effect free: stable sort keys for top brief are (`risk_chilli_score`, `likelihood_score`, `impact_score`, `change_detected_at`, `event_id`) with fixed tie-break order.
+- Top-brief output MUST exclude lifecycle `retracted` items and items missing any of `impact_score`, `likelihood_score`, `confidence_score`, and `scoring_version`.
+- Detail payloads MUST include `source_systems`, `provenance`, `lineage`, and `under16_trigger` for every event to preserve analyst auditability.
+- Any top-brief payload mismatch between deterministic runs on identical source input is a hard verification failure and must halt publish of dashboard automation.
+- Cursor pagination on detail views MUST be deterministic: identical input filters and cursor values must return identical records and ordering; page tokens must embed sort context and filter hash.
+- Detail pagination requests may only move forward/backward one directional token; mixed-token jumps are invalid and must be rejected as malformed.
+- When `staleAfterMinutes` window is exceeded and `requiresRevalidateOnStale` is true, the payload must surface `is_stale` and `stale_reason` while preserving last-known data in read-only mode.
+- If refresh fails or times out, keep returning last valid payload with explicit stale warning and do not switch to write/update mode.
+- Interaction-worker enablement requires a completed contract fixture set and passing TDD cases for malformed cursor payloads and stale fallback payloads before switching to update/write mode.
+- Any pagination token handling code path must verify `filters_hash` against the active filter/sort context; mismatch must be treated as malformed input.
+- Before enabling interaction-worker write/update behavior, all interaction fixtures in `tests/dashboard/*` must be present and pass:
+  - `tests/dashboard/interaction-worker-fixtures.json`
+  - `tests/dashboard/interaction-worker-validation-cases.json`
+  - `tests/dashboard/stale-refresh-payload-cases.json`
+  - `tests/dashboard/interaction-worker-rollout-checklist.md`
+- Rollback for interaction-worker enablement must be one-step: immediately flip runtime flag to `interaction.worker.mode=read-only` and reload the runtime config before any further writes occur.
+- Cursor replay tests must enforce snapshot context under concurrent update load (`filters_hash` + snapshot sort key) and reject any mixed-direction jumps even when both tokens are internally well-formed.
+- Stale and partial-failure payloads must include `is_stale`, `stale_reason`, `refresh_required_by_utc`, and `stale_warning_text`, and must keep `items` unchanged from last successful payload until revalidated.
+- Iteration 8 readiness requires an execution evidence artifact at `tests/dashboard/interaction-worker-gate-verification.json` before any write/update mode transition; if artifact status is not PASS, keep `interaction_worker.mode=read-only` and preserve stale warning state.
+- Execution of interaction-worker readiness checks is blocked until a deterministic local harness can produce timestamped PASS/NOT RUN outcomes for each case (`IFC-001`, `VAL-*`, `MIX-001`, `STALE-*`) and write them to `tests/dashboard/interaction-worker-gate-verification.json`.
+- A one-step transition from read-only to enabled is allowed only when `runtimeInteractionWorkerAvailable=true`, all required checks are PASS, and all check statuses are backed by harness output with non-empty `status` and `reason` fields.
+- Before runtime mode transitions, the local harness at `tests/dashboard/interaction-worker-gate-harness.cjs` must be executable and produce `allPass=true` with explicit `passCount`, `failCount`, and check-level `status` values.
+- If any gate check fails, interaction-worker mode must remain `read-only`; one-step rollback remains `interaction_worker.mode=read-only` and stale read-only payload visibility must be preserved.
+- Runtime mode transition for interaction worker is only valid with an explicit policy sign-off artifact containing approver identity, timestamp, and rationale.
+- The transition sequence must be auditable as `read-only` -> `validation` -> `enabled`, with a documented rollback drill showing that stale payload state is preserved after the one-step rollback.
+- Before any `enabled` mode operation, verify `tests/dashboard/interaction-worker-mode-transition-review.json` has `overallDecision: READY_FOR_ENABLEMENT_PENDING_APPROVAL` or `ENABLED` and that stale warning continuity is preserved in rollback checks.
+- Before one-step transition to `enabled`, create `tests/dashboard/interaction-worker-policy-signoff.json` with `approved: true`, non-null `approver.identity`, RFC3339 `approvedAtUtc`, and signed rationale; transition must remain blocked if any required field is missing.
+- Before sustained enabled operation, require `tests/dashboard/interaction-worker-write-update-smoke.json` with PASS write/update verification (one-step transition + rollback + write-path gating).
+- A `PASS` write-update smoke artifact must include the policy-signoff reference and gate-verification reference; otherwise remain in `read-only`.
+- PASS assertions in gate artifacts must be derived from semantically coherent detail checks: if expected/actual semantics in `details` contradict PASS intent, the artifact must be treated as FAILED and transition blocked.
+- All no-op continuity iterations must explicitly log PASS revalidation in `activity.md` and maintain an updated `PRD.json` `execution` block, even when control posture is unchanged.

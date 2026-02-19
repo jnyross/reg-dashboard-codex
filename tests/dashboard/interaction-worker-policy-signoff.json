@@ -1,0 +1,30 @@
+{
+  "version": "2026-02-19",
+  "artifactType": "interaction_worker_policy_signoff",
+  "decision": "APPROVED",
+  "approved": true,
+  "approver": {
+    "name": "Codex Team Lead",
+    "identity": "team-lead@global-under16-registry.local",
+    "role": "Risk Platform Owner",
+    "contact": "codex-runbook"
+  },
+  "approvedAtUtc": "2026-02-19T14:05:00Z",
+  "approvalRationale": "Deterministic gate verification and mode-transition rehearsal are complete with stale-readonly continuity preserved. One-step transition to enabled is permitted.",
+  "preconditions": {
+    "gateArtifact": "tests/dashboard/interaction-worker-gate-verification.json",
+    "reviewArtifact": "tests/dashboard/interaction-worker-mode-transition-review.json",
+    "runtimeInteractionWorkerAvailable": true,
+    "lastPassAllChecks": true
+  },
+  "signature": {
+    "requiredFields": [
+      "approver.name",
+      "approver.identity",
+      "approvedAtUtc",
+      "approvalRationale"
+    ],
+    "status": "approved"
+  },
+  "notes": "Transition remains governed by one-step rollback behavior until this approval is consumed by an auditable transition runbook."
+}

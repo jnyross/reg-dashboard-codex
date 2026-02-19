@@ -1,0 +1,1 @@
+combinations: codex+claude+opencode

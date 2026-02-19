@@ -1,0 +1,54 @@
+{
+  "version": "2026-02-19",
+  "goal": "Define stale and partial-failure payload contract expectations.",
+  "cases": [
+    {
+      "case_id": "STALE-TO-TOO-LATE-01",
+      "scenario": "Scheduled refresh timed out after stale window.",
+      "contract": {
+        "surface": "detailSection",
+        "staleAfterMinutes": 90,
+        "requiresRevalidateOnStale": true
+      },
+      "input": {
+        "payload_age_minutes": 125,
+        "refresh_status": "timeout",
+        "active_payload_items": ["evt-001", "evt-002", "evt-003"]
+      },
+      "expected": {
+        "is_stale": true,
+        "stale_reason": "refresh_timeout",
+        "refresh_required_by_utc": "2026-02-19T11:30:00Z",
+        "stale_warning_text": "Refresh exceeded stale threshold and timed out; showing last known payload in read-only mode.",
+        "items_preserved": true,
+        "mode": "read-only",
+        "refresh_error_code": "TIMEOUT"
+      }
+    },
+    {
+      "case_id": "STALE-TO-PARTIAL-01",
+      "scenario": "Refresh call partially failed after ingest completed for one source.",
+      "contract": {
+        "surface": "topBrief",
+        "staleAfterMinutes": 90,
+        "requiresRevalidateOnStale": true
+      },
+      "input": {
+        "payload_age_minutes": 60,
+        "refresh_status": "partial_failure",
+        "failed_sources": 1,
+        "total_sources": 4,
+        "active_payload_items": ["evt-011", "evt-012"]
+      },
+      "expected": {
+        "is_stale": true,
+        "stale_reason": "partial_refresh_failure",
+        "refresh_required_by_utc": "2026-02-19T11:45:00Z",
+        "stale_warning_text": "One source failed during refresh; item set retained with warning.",
+        "items_preserved": true,
+        "mode": "read-only",
+        "refresh_error_code": "PARTIAL_FAILURE"
+      }
+    }
+  ]
+}

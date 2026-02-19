@@ -1,0 +1,85 @@
+{
+  "version": "2026-02-19",
+  "goal": "Deterministic interaction-worker cursor behavior under concurrent dataset changes",
+  "fixtureCases": [
+    {
+      "case_id": "IFC-001",
+      "scenario": "Concurrent update between page reads must not create duplicates or skips.",
+      "surface": "detailSection",
+      "request": {
+        "filters": {
+          "jurisdiction_ids": ["US-FED"],
+          "risk_chili_score_min": 2,
+          "event_stage": ["detected", "normalized", "scored", "triaged", "monitoring"]
+        },
+        "sort": {
+          "sort_key": "risk_desc",
+          "tie_break": ["likelihood_desc", "event_id"],
+          "direction": "next"
+        },
+        "page_size": 2
+      },
+      "base_dataset": [
+        {"event_id":"evt-001","jurisdiction_ids":["US-FED"],"risk_chili_score":5,"likelihood_score":5,"change_detected_at":"2026-02-19T10:00:00Z"},
+        {"event_id":"evt-002","jurisdiction_ids":["US-FED"],"risk_chili_score":5,"likelihood_score":4,"change_detected_at":"2026-02-19T09:58:00Z"},
+        {"event_id":"evt-003","jurisdiction_ids":["US-FED"],"risk_chili_score":4,"likelihood_score":5,"change_detected_at":"2026-02-19T09:55:00Z"},
+        {"event_id":"evt-004","jurisdiction_ids":["US-FED"],"risk_chili_score":3,"likelihood_score":5,"change_detected_at":"2026-02-19T09:50:00Z"},
+        {"event_id":"evt-005","jurisdiction_ids":["US-FED"],"risk_chili_score":2,"likelihood_score":4,"change_detected_at":"2026-02-19T09:45:00Z"}
+      ],
+      "step_1": {
+        "cursor": null,
+        "expected_item_ids": ["evt-001", "evt-002"],
+        "expected_next_cursor": {
+          "sort_key": "risk_desc",
+          "sort_direction": "next",
+          "last_seen_risk_chili_score": 5,
+          "last_seen_likelihood_score": 4,
+          "last_seen_event_id": "evt-002",
+          "filters_hash": "jurisdiction|risk|US-FED|2|event_stage",
+          "snapshot_signature": "snapshot-2026-02-19T10:00:00Z"
+        }
+      },
+      "dataset_mutation_before_step_2": {
+        "mutations": [
+          {
+            "event_id": "evt-002",
+            "change": "risk_chili_score downgraded from 4 to 1 after first page was issued"
+          },
+          {
+            "event_id": "evt-006",
+            "insert": {
+              "event_id": "evt-006",
+              "jurisdiction_ids": ["US-FED"],
+              "risk_chili_score": 5,
+              "likelihood_score": 3,
+              "change_detected_at": "2026-02-19T10:01:00Z"
+            }
+          }
+        ]
+      },
+      "step_2": {
+        "cursor": {
+          "sort_key": "risk_desc",
+          "sort_direction": "next",
+          "last_seen_risk_chili_score": 5,
+          "last_seen_likelihood_score": 4,
+          "last_seen_event_id": "evt-002",
+          "filters_hash": "jurisdiction|risk|US-FED|2|event_stage",
+          "snapshot_signature": "snapshot-2026-02-19T10:00:00Z"
+        },
+        "expected_item_ids": ["evt-003", "evt-004"],
+        "expected_next_cursor": {
+          "sort_key": "risk_desc",
+          "sort_direction": "next",
+          "last_seen_risk_chili_score": 3,
+          "last_seen_likelihood_score": 5,
+          "last_seen_event_id": "evt-004",
+          "filters_hash": "jurisdiction|risk|US-FED|2|event_stage",
+          "snapshot_signature": "snapshot-2026-02-19T10:00:00Z"
+        }
+      },
+      "expected_no_duplicates": true,
+      "expected_includes_snapshot_epoch": "2026-02-19T10:00:00Z"
+    }
+  ]
+}

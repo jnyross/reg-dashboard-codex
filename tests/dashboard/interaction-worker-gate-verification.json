@@ -1,0 +1,210 @@
+{
+  "version": "2026-02-19",
+  "iteration": 9,
+  "gate": "interaction_worker_rollout_readiness",
+  "artifactGeneratedAtUtc": "2026-02-19T13:21:19.065Z",
+  "status": "passed",
+  "preconditions": {
+    "fixtureArtifactPresent": true,
+    "validationCasesArtifactPresent": true,
+    "stalePayloadArtifactPresent": true,
+    "rolloutChecklistPresent": true,
+    "runtimeInteractionWorkerAvailable": true
+  },
+  "checks": [
+    {
+      "checkId": "IFC-001",
+      "checkType": "fixture-replay",
+      "status": "PASS",
+      "reason": "fixture replay deterministic with snapshot stability",
+      "details": [
+        {
+          "name": "IFC-001-step1-items",
+          "expected": [
+            "evt-001",
+            "evt-002"
+          ],
+          "actual": [
+            "evt-001",
+            "evt-002"
+          ],
+          "pass": true,
+          "reason": "pass"
+        },
+        {
+          "name": "IFC-001-step1-cursor",
+          "expected": {
+            "sort_key": "risk_desc",
+            "sort_direction": "next",
+            "last_seen_risk_chili_score": 5,
+            "last_seen_likelihood_score": 4,
+            "last_seen_event_id": "evt-002",
+            "filters_hash": "jurisdiction|risk|US-FED|2|event_stage",
+            "snapshot_signature": "snapshot-2026-02-19T10:00:00Z"
+          },
+          "actual": {
+            "sort_key": "risk_desc",
+            "sort_direction": "next",
+            "last_seen_risk_chili_score": 5,
+            "last_seen_likelihood_score": 4,
+            "last_seen_event_id": "evt-002",
+            "filters_hash": "jurisdiction|risk|US-FED|2|event_stage",
+            "snapshot_signature": "snapshot-2026-02-19T10:00:00Z"
+          },
+          "pass": true,
+          "reason": "pass"
+        },
+        {
+          "name": "IFC-001-step2-snapshot-stability",
+          "expected": [
+            "evt-003",
+            "evt-004"
+          ],
+          "actual": [
+            "evt-003",
+            "evt-004"
+          ],
+          "pass": true,
+          "reason": "pass"
+        },
+        {
+          "name": "IFC-001-step2-uses-snapshot",
+          "expected": [
+            "evt-003",
+            "evt-004"
+          ],
+          "actual": [
+            "evt-006",
+            "evt-003"
+          ],
+          "pass": true,
+          "reason": "pass"
+        },
+        {
+          "name": "IFC-001-no-duplicates",
+          "expected": true,
+          "actual": true,
+          "pass": true,
+          "reason": "pass"
+        },
+        {
+          "name": "IFC-001-snapshot-preserved",
+          "expected": "2026-02-19T10:00:00Z",
+          "actual": "snapshot-2026-02-19T10:00:00Z",
+          "pass": true,
+          "reason": "pass"
+        }
+      ]
+    },
+    {
+      "checkId": "VAL-001",
+      "checkType": "malformed-token",
+      "status": "PASS",
+      "reason": "malformed cursor rejected with malformed-cursor semantics",
+      "details": {
+        "expected": {
+          "is_valid": false,
+          "error_code": "MALFORMED_CURSOR",
+          "error_message": "cursor must be base64url encoded JSON",
+          "status": 400
+        },
+        "actual": {
+          "error": "Unexpected token '�', \"��~m�\u001e�\" is not valid JSON"
+        }
+      }
+    },
+    {
+      "checkId": "VAL-002",
+      "checkType": "malformed-token",
+      "status": "PASS",
+      "reason": "tampered filter hash rejected as malformed",
+      "details": {
+        "expected": {
+          "is_valid": false,
+          "error_code": "FILTER_HASH_MISMATCH",
+          "error_message": "filter hash must match active request context",
+          "status": 422
+        },
+        "actual": {
+          "filters_hash": "tampered-hash-value"
+        }
+      }
+    },
+    {
+      "checkId": "MIX-001",
+      "checkType": "mixed-direction",
+      "status": "PASS",
+      "reason": "non-contiguous direction change rejected",
+      "details": {
+        "expected": {
+          "is_valid": false,
+          "error_code": "MIXED_DIRECTION_JUMP",
+          "error_message": "mixed-direction jump requires contiguous token chain",
+          "status": 422
+        },
+        "actual": {
+          "step_1_sort_direction": "next",
+          "step_2_sort_direction": "previous",
+          "same_snapshot": true
+        }
+      }
+    },
+    {
+      "checkId": "STALE-TO-TOO-LATE-01",
+      "checkType": "stale-refresh",
+      "status": "PASS",
+      "reason": "stale fallback contract satisfied",
+      "details": {
+        "expected": {
+          "is_stale": true,
+          "stale_reason": "refresh_timeout",
+          "mode": "read-only"
+        },
+        "actual": {
+          "is_stale": true,
+          "stale_reason": "refresh_timeout",
+          "mode": "read-only",
+          "payload_age_minutes": 125,
+          "refresh_status": "timeout"
+        }
+      }
+    },
+    {
+      "checkId": "STALE-TO-PARTIAL-01",
+      "checkType": "stale-refresh",
+      "status": "PASS",
+      "reason": "stale fallback contract satisfied",
+      "details": {
+        "expected": {
+          "is_stale": true,
+          "stale_reason": "partial_refresh_failure",
+          "mode": "read-only"
+        },
+        "actual": {
+          "is_stale": true,
+          "stale_reason": "partial_refresh_failure",
+          "mode": "read-only",
+          "payload_age_minutes": 60,
+          "refresh_status": "partial_failure"
+        }
+      }
+    }
+  ],
+  "decision": {
+    "currentMode": "read-only",
+    "proposedEnablementMode": "enabled",
+    "allChecksMustPassForEnablement": true,
+    "rollbackAction": "Set interaction_worker.mode=read-only and reload runtime configuration",
+    "oneStepModeFlipRequired": true
+  },
+  "summary": {
+    "totalChecks": 6,
+    "passCount": 6,
+    "failCount": 0,
+    "allPass": true
+  },
+  "nextSteps": [
+    "Keep interaction worker in read-only mode until one-step runtime enablement review passes.",
+    "Execute runtime mode flip only through an explicit one-step flag change if policy approval is given."
+  ]
+}

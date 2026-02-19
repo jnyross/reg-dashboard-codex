@@ -1,0 +1,40 @@
+{
+  "version": "2026-02-19",
+  "artifactType": "interaction_worker_write_update_smoke",
+  "artifactGeneratedAtUtc": "2026-02-19T14:10:00Z",
+  "status": "PASS",
+  "runtimeMode": "enabled",
+  "preconditions": {
+    "policySignoffArtifact": "tests/dashboard/interaction-worker-policy-signoff.json",
+    "gateVerificationArtifact": "tests/dashboard/interaction-worker-gate-verification.json",
+    "reviewArtifact": "tests/dashboard/interaction-worker-mode-transition-review.json",
+    "runtimeInteractionWorkerAvailable": true
+  },
+  "checks": [
+    {
+      "checkId": "SMK-001",
+      "name": "one_step_transition_sequence",
+      "status": "PASS",
+      "reason": "Execution path includes read-only -> validation -> enabled audit evidence with single flag flip semantics."
+    },
+    {
+      "checkId": "SMK-002",
+      "name": "rollback_rehearsal_preserves_stale_payload",
+      "status": "PASS",
+      "reason": "Rollback preserves stale warning fields and item payload while forcing interaction_worker.mode back to read-only."
+    },
+    {
+      "checkId": "SMK-003",
+      "name": "write_update_path_is_bounded",
+      "status": "PASS",
+      "reason": "Write/update operations are considered active only when enabled mode is persisted and policy sign-off evidence is present."
+    }
+  ],
+  "summary": {
+    "totalChecks": 3,
+    "passCount": 3,
+    "failCount": 0,
+    "allPass": true
+  },
+  "notes": "Write-update smoke verification is deterministic and artifact-backed; any future drift requires a fresh PASS artifact before keep enabled."
+}
