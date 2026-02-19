@@ -214,27 +214,36 @@ export async function runIngestionPipeline(
     for (const item of crawlResult.items) {
       itemsDiscovered += 1;
       try {
+        console.log(`  Analyzing [${itemsDiscovered}/${crawlResult.items.length}]: ${item.title.slice(0, 80)}...`);
         const analysis = await analyzeCrawledItem(item);
         const upsertStatus = await upsertAnalysedItem(db, item, analysis);
 
         if (upsertStatus === "created") {
           eventsCreated += 1;
+          console.log(`    → Created (relevant)`);
         }
 
         if (upsertStatus === "updated") {
           eventsUpdated += 1;
+          console.log(`    → Updated`);
         }
 
         if (upsertStatus === "status_changed") {
           eventsStatusChanged += 1;
+          console.log(`    → Status changed`);
         }
 
         if (upsertStatus === "ignored") {
           eventsIgnored += 1;
+          console.log(`    → Ignored (not relevant)`);
         }
-      } catch {
+      } catch (err) {
         eventsIgnored += 1;
+        const errMsg = err instanceof Error ? err.message : String(err);
+        console.log(`    → Error: ${errMsg.slice(0, 100)}`);
       }
+      // Rate limit to avoid overwhelming the API
+      await new Promise(resolve => setTimeout(resolve, 500));
     }
 
     const status: CrawlSummary["status"] = sourcesFailed > 0 ? "partial" : "completed";

@@ -56,7 +56,18 @@ const stageFallback: Array<[RegExp, RegulationStage]> = [
 const analysisPromptTemplate = `You are an AI legal analyst for global tech regulation.
 
 You are given one crawled source item that may describe online safety regulation.
-Classify only if it clearly affects minors (children, youth, under-13, under-16, age-gated services).
+Classify as relevant if it relates to ANY regulation, law, bill, enforcement, or guidance affecting minors/children/teens online. Be INCLUSIVE — it is far better to include a borderline-relevant item than to miss a real regulation.
+
+Mark as relevant if ANY of these apply:
+- Laws/bills/regulations about children or teens online (COPPA, DSA, Online Safety Acts, etc.)
+- Data protection with children's provisions (GDPR Art.8, LGPD, DPDP, etc.)
+- Age verification, parental consent, or children's data protection
+- Platform safety duties for users under 18
+- AI regulation affecting minors
+- Social media restrictions for minors
+- Advertising/profiling restrictions for children
+- Even if the text is partial or noisy — if the source and title suggest child/teen regulation, mark relevant
+
 Return compact strict JSON with these exact keys:
 {
   "isRelevant": boolean,
@@ -260,11 +271,12 @@ export async function analyzeCrawledItem(item: CrawledItem, apiKey = process.env
     .replace("{{source}}", item.source.name)
     .replace("{{snippet}}", snippet);
 
-  const response = await fetch("https://api.minimax.io/anthropic", {
+  const response = await fetch("https://api.minimax.io/anthropic/v1/messages", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${apiKey}`,
+      "x-api-key": apiKey,
       "Content-Type": "application/json",
+      "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
       model: "MiniMax-M2.5",
@@ -274,10 +286,7 @@ export async function analyzeCrawledItem(item: CrawledItem, apiKey = process.env
           content: prompt,
         },
       ],
-      max_tokens: 768,
-      temperature: 0.15,
-      top_p: 0.95,
-      stream: false,
+      max_tokens: 2048,
     }),
   });
 
