@@ -271,30 +271,41 @@ export async function analyzeCrawledItem(item: CrawledItem, apiKey = process.env
     .replace("{{source}}", item.source.name)
     .replace("{{snippet}}", snippet);
 
-  const response = await fetch("https://api.minimax.io/anthropic/v1/messages", {
-    method: "POST",
-    headers: {
-      "x-api-key": apiKey,
-      "Content-Type": "application/json",
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: "MiniMax-M2.5",
-      messages: [
-        {
-          role: "user",
-          content: prompt,
-        },
-      ],
-      max_tokens: 2048,
-    }),
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 60_000);
 
-  if (!response.ok) {
-    throw new Error(`MiniMax API request failed with ${response.status} ${response.statusText}`);
+  let response: Response;
+  let payload: unknown;
+  try {
+    response = await fetch("https://api.minimax.io/anthropic/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": apiKey,
+        "Content-Type": "application/json",
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "MiniMax-M2.5",
+        messages: [
+          {
+            role: "user",
+            content: prompt,
+          },
+        ],
+        max_tokens: 2048,
+      }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const errBody = await response.text().catch(() => "");
+      throw new Error(`MiniMax API request failed with ${response.status} ${response.statusText}: ${errBody.slice(0, 200)}`);
+    }
+
+    payload = await response.json();
+  } finally {
+    clearTimeout(timer);
   }
-
-  const payload = await response.json();
   const rawText = extractTextFromModelResponse(payload);
 
   if (!rawText) {

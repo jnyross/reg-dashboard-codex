@@ -211,21 +211,23 @@ export async function runIngestionPipeline(
       sourcesSuccess += 1;
     }
 
-    // Process items in concurrent batches of 5
+    // Analyze in concurrent batches of 5, then write sequentially to SQLite
     const BATCH_SIZE = 5;
     for (let i = 0; i < crawlResult.items.length; i += BATCH_SIZE) {
       const batch = crawlResult.items.slice(i, i + BATCH_SIZE);
       const results = await Promise.allSettled(
         batch.map(async (item, idx) => {
           const itemNum = i + idx + 1;
-          itemsDiscovered += 1;
           console.log(`  Analyzing [${itemNum}/${crawlResult.items.length}]: ${item.title.slice(0, 80)}...`);
           const analysis = await analyzeCrawledItem(item);
           return { item, analysis };
         })
       );
 
-      for (const result of results) {
+      // Write to DB sequentially (SQLite doesn't handle concurrent writes)
+      for (let j = 0; j < results.length; j++) {
+        itemsDiscovered += 1;
+        const result = results[j];
         if (result.status === "rejected") {
           eventsIgnored += 1;
           console.log(`    → Error: ${String(result.reason).slice(0, 100)}`);
@@ -241,7 +243,7 @@ export async function runIngestionPipeline(
         } catch (err) {
           eventsIgnored += 1;
           const errMsg = err instanceof Error ? err.message : String(err);
-          console.log(`    → Error: ${errMsg.slice(0, 100)}`);
+          console.log(`    → DB Error: ${errMsg.slice(0, 100)}`);
         }
       }
     }
