@@ -127,9 +127,11 @@ function parseFeedText(feedText: string, sourceUrl: string): CrawlInput[] {
   }
 
   const seen = new Set<string>();
+  const MAX_ITEMS_PER_FEED = 5;
 
   const items: CrawlInput[] = [];
   for (const entry of entries) {
+    if (items.length >= MAX_ITEMS_PER_FEED) break;
     const rawTitle = parseTag(entry, "title");
     const rawDescription =
       parseTag(entry, "description") || parseTag(entry, "summary") || parseTag(entry, "content") || "";
@@ -167,13 +169,18 @@ function parseWebPage(sourceText: string, source: SourceRecord): CrawlInput[] {
     return [];
   }
 
+  // If body is too thin, add source metadata for context
+  const enrichedBody = body.length < 200 
+    ? `Source: ${source.name}\nNotes: ${source.notes || ''}\n\n${body}`
+    : body;
+
   return [
     {
       title,
       publishedAt: null,
       url: source.url,
-      summary: body.slice(0, 500),
-      rawText: body,
+      summary: enrichedBody.slice(0, 500),
+      rawText: enrichedBody,
     },
   ];
 }
