@@ -3,7 +3,7 @@ const API_BASE = 'http://localhost:3001/api';
 let currentPage = 1;
 let currentJurisdiction = '';
 let currentMinRisk = '';
-let lastUpdated = null;
+let currentAgeBracket = '';
 
 function showError(message) {
   const banner = document.getElementById('error-banner');
@@ -25,9 +25,9 @@ function getChiliHTML(score) {
 function formatDate(isoString) {
   if (!isoString) return '';
   const date = new Date(isoString);
-  return date.toLocaleDateString('en-US', { 
-    month: 'short', 
-    day: 'numeric', 
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit'
@@ -43,29 +43,35 @@ function formatJurisdiction(item) {
 
 function renderBriefItems(items) {
   const container = document.getElementById('brief-container');
-  
+
   if (!items || items.length === 0) {
     container.innerHTML = '<div class="empty-state">No priority items at this time.</div>';
     return;
   }
 
-  container.innerHTML = items.map(item => `
+  container.innerHTML = items
+    .map(
+      (item) => `
     <div class="brief-card">
       <div class="title">${escapeHTML(item.title)}</div>
       <div class="meta">
         <span class="jurisdiction">${escapeHTML(formatJurisdiction(item))}</span>
+        <span class="age-bracket">${escapeHTML(item.ageBracket || 'both')}</span>
+        <span class="reliability">R${escapeHTML(String(item.source?.reliabilityTier || 'n/a'))}</span>
         <span class="stage stage-${item.stage}">${item.stage.replace('_', ' ')}</span>
         <span class="chili">${getChiliHTML(item.chiliScore || item.scores?.chili || 1)}</span>
       </div>
       <div class="reason">${escapeHTML(item.summary || 'No summary available')}</div>
       ${item.source?.url ? `<a href="${escapeHTML(item.source.url)}" target="_blank" rel="noopener" class="source-link">View Source →</a>` : ''}
     </div>
-  `).join('');
+  `,
+    )
+    .join('');
 }
 
 function renderEventsTable(data) {
   const container = document.getElementById('events-container');
-  
+
   if (!data.items || data.items.length === 0) {
     container.innerHTML = '<div class="empty-state">No events match your filters.</div>';
     return;
@@ -78,13 +84,17 @@ function renderEventsTable(data) {
           <th>Title</th>
           <th>Jurisdiction</th>
           <th>Stage</th>
+          <th>Age</th>
           <th>Risk</th>
+          <th>Reliability</th>
           <th>Source</th>
           <th>Feedback</th>
         </tr>
       </thead>
       <tbody>
-        ${data.items.map(item => `
+        ${data.items
+          .map(
+            (item) => `
           <tr>
             <td class="title-cell">
               <a href="#" onclick="showEventDetail('${item.id}'); return false;" title="${escapeHTML(item.summary || '')}">
@@ -93,16 +103,24 @@ function renderEventsTable(data) {
             </td>
             <td>${escapeHTML(formatJurisdiction(item))}</td>
             <td><span class="stage stage-${item.stage}">${item.stage.replace('_', ' ')}</span></td>
+            <td><span class="age-badge">${escapeHTML(item.ageBracket || 'both')}</span></td>
             <td class="chili-cell">${getChiliHTML(item.scores?.chili || 1)}</td>
+            <td>R${escapeHTML(String(item.source?.reliabilityTier || 'n/a'))}</td>
             <td class="source-cell">
-              ${item.source?.url ? `<a href="${escapeHTML(item.source.url)}" target="_blank" rel="noopener">${escapeHTML(item.source.name)}</a>` : escapeHTML(item.source?.name || '')}
+              ${
+                item.source?.url
+                  ? `<a href="${escapeHTML(item.source.url)}" target="_blank" rel="noopener">${escapeHTML(item.source.name)}</a>`
+                  : escapeHTML(item.source?.name || '')
+              }
             </td>
             <td class="feedback-cell">
               <button class="feedback-btn good" onclick="submitFeedback('${item.id}', 'good')" title="Mark as good">👍 Good</button>
               <button class="feedback-btn bad" onclick="submitFeedback('${item.id}', 'bad')" title="Mark as bad">👎 Bad</button>
             </td>
           </tr>
-        `).join('')}
+        `,
+          )
+          .join('')}
       </tbody>
     </table>
   `;
@@ -112,22 +130,22 @@ function renderEventsTable(data) {
 
 function renderPagination(data) {
   const container = document.getElementById('pagination');
-  
+
   if (data.totalPages <= 1) {
     container.innerHTML = '';
     return;
   }
 
   let html = '';
-  
+
   if (data.page > 1) {
     html += `<button onclick="goToPage(${data.page - 1})">← Prev</button>`;
   }
-  
+
   const maxPages = 5;
   let startPage = Math.max(1, data.page - Math.floor(maxPages / 2));
   let endPage = Math.min(data.totalPages, startPage + maxPages - 1);
-  
+
   if (endPage - startPage < maxPages - 1) {
     startPage = Math.max(1, endPage - maxPages + 1);
   }
@@ -135,7 +153,7 @@ function renderPagination(data) {
   for (let i = startPage; i <= endPage; i++) {
     html += `<button class="${i === data.page ? 'active' : ''}" onclick="goToPage(${i})">${i}</button>`;
   }
-  
+
   if (data.page < data.totalPages) {
     html += `<button onclick="goToPage(${data.page + 1})">Next →</button>`;
   }
@@ -146,8 +164,8 @@ function renderPagination(data) {
 function populateJurisdictionFilter(items) {
   const select = document.getElementById('jurisdiction-filter');
   const jurisdictions = new Set();
-  
-  items.forEach(item => {
+
+  items.forEach((item) => {
     if (item.jurisdiction?.country) {
       jurisdictions.add(item.jurisdiction.country);
     }
@@ -157,13 +175,13 @@ function populateJurisdictionFilter(items) {
   });
 
   const sorted = Array.from(jurisdictions).sort();
-  
   const currentValue = select.value;
+
   select.innerHTML = '<option value="">All Jurisdictions</option>';
-  sorted.forEach(j => {
+  sorted.forEach((j) => {
     select.innerHTML += `<option value="${escapeHTML(j)}">${escapeHTML(j)}</option>`;
   });
-  
+
   if (currentValue) {
     select.value = currentValue;
   }
@@ -175,13 +193,15 @@ async function fetchBrief() {
     if (!response.ok) {
       throw new Error(`Brief API error: ${response.status}`);
     }
+
     const data = await response.json();
     renderBriefItems(data.items);
-    lastUpdated = data.generatedAt;
-    document.getElementById('last-updated').textContent = formatDate(data.generatedAt);
+    const lastCrawled = data.lastCrawledAt || data.generatedAt;
+    document.getElementById('last-updated').textContent = formatDate(lastCrawled);
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     console.error('Error fetching brief:', error);
-    showError(`Failed to load brief: ${error.message}`);
+    showError(`Failed to load brief: ${message}`);
     document.getElementById('brief-container').innerHTML = '<div class="error-state">Failed to load brief.</div>';
   }
 }
@@ -191,29 +211,33 @@ async function fetchEvents(page = 1) {
     const params = new URLSearchParams();
     params.set('page', page.toString());
     params.set('limit', '10');
-    
+
     if (currentJurisdiction) {
       params.set('jurisdiction', currentJurisdiction);
     }
     if (currentMinRisk) {
       params.set('minRisk', currentMinRisk);
     }
+    if (currentAgeBracket) {
+      params.set('ageBracket', currentAgeBracket);
+    }
 
     const response = await fetch(`${API_BASE}/events?${params}`);
     if (!response.ok) {
       throw new Error(`Events API error: ${response.status}`);
     }
+
     const data = await response.json();
-    
     renderEventsTable(data);
     renderPagination(data);
-    
-    if (page === 1 && !currentJurisdiction && !currentMinRisk) {
+
+    if (page === 1 && !currentJurisdiction && !currentMinRisk && !currentAgeBracket) {
       populateJurisdictionFilter(data.items);
     }
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     console.error('Error fetching events:', error);
-    showError(`Failed to load events: ${error.message}`);
+    showError(`Failed to load events: ${message}`);
     document.getElementById('events-container').innerHTML = '<div class="error-state">Failed to load events.</div>';
   }
 }
@@ -225,21 +249,20 @@ async function submitFeedback(eventId, rating) {
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ rating })
+      body: JSON.stringify({ rating }),
     });
-    
+
     if (!response.ok) {
       throw new Error(`Feedback API error: ${response.status}`);
     }
-    
-    const result = await response.json();
-    console.log('Feedback submitted:', result);
-    
+
+    await response.json();
     showError('Feedback submitted successfully! (This banner will auto-dismiss)');
     setTimeout(hideError, 3000);
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     console.error('Error submitting feedback:', error);
-    showError(`Failed to submit feedback: ${error.message}`);
+    showError(`Failed to submit feedback: ${message}`);
   }
 }
 
@@ -256,6 +279,7 @@ function applyFilters() {
   currentPage = 1;
   currentJurisdiction = document.getElementById('jurisdiction-filter').value;
   currentMinRisk = document.getElementById('min-risk-filter').value;
+  currentAgeBracket = document.getElementById('age-bracket-filter').value;
   fetchEvents(currentPage);
 }
 
@@ -263,9 +287,47 @@ function clearFilters() {
   currentPage = 1;
   currentJurisdiction = '';
   currentMinRisk = '';
+  currentAgeBracket = '';
   document.getElementById('jurisdiction-filter').value = '';
   document.getElementById('min-risk-filter').value = '';
+  document.getElementById('age-bracket-filter').value = '';
   fetchEvents(currentPage);
+}
+
+async function runCrawl() {
+  const button = document.querySelector('button[onclick="runCrawl()"]');
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Running...';
+  }
+
+  try {
+    const response = await fetch(`${API_BASE}/crawl`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({}),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Crawl API error: ${response.status}`);
+    }
+
+    await response.json();
+    await fetchBrief();
+    await fetchEvents(currentPage);
+    showError('Crawl completed successfully.');
+    setTimeout(hideError, 2000);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    showError(`Failed to run crawl: ${message}`);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = 'Run Crawl';
+    }
+  }
 }
 
 function escapeHTML(str) {
@@ -278,7 +340,7 @@ function escapeHTML(str) {
 document.addEventListener('DOMContentLoaded', () => {
   fetchBrief();
   fetchEvents();
-  
+
   setInterval(() => {
     fetchBrief();
     fetchEvents(currentPage);

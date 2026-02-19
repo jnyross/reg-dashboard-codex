@@ -1,16 +1,7 @@
 import express, { Request, Response } from "express";
 import DatabaseConstructor from "better-sqlite3";
-
-type Stage =
-  | "proposed"
-  | "introduced"
-  | "committee_review"
-  | "passed"
-  | "enacted"
-  | "effective"
-  | "amended"
-  | "withdrawn"
-  | "rejected";
+import { runIngestionPipeline, CrawlSummary } from "./ingest";
+import { getLastCrawlTime, Stage, AgeBracket } from "./db";
 
 type FeedbackRow = {
   id: number;
@@ -32,6 +23,33 @@ const allowedStages: Stage[] = [
   "rejected",
 ];
 
+const allowedAgeBrackets: AgeBracket[] = ["13-15", "16-18", "both"];
+
+const allowedRatings = new Set(["good", "bad"]);
+
+type DbEventRow = {
+  id: string;
+  title: string;
+  jurisdiction_country: string;
+  jurisdiction_state: string;
+  stage: Stage;
+  age_bracket: AgeBracket;
+  is_under16_applicable: number;
+  impact_score: number;
+  likelihood_score: number;
+  confidence_score: number;
+  chili_score: number;
+  summary: string | null;
+  effective_date: string | null;
+  published_date: string | null;
+  source_name: string;
+  source_url: string;
+  source_reliability_tier: number;
+  updated_at: string;
+  created_at: string;
+  last_crawled_at: string | null;
+};
+
 const stageUrgency: Record<Stage, number> = {
   proposed: 9,
   introduced: 8,
@@ -46,40 +64,13 @@ const stageUrgency: Record<Stage, number> = {
 
 const defaultBriefLimit = 5;
 
-const allowedRatings = new Set(["good", "bad"]);
-
-type DbEventRow = {
-  id: string;
-  title: string;
-  jurisdiction_country: string;
-  jurisdiction_state: string | null;
-  stage: Stage;
-  is_under16_applicable: number;
-  impact_score: number;
-  likelihood_score: number;
-  confidence_score: number;
-  chili_score: number;
-  summary: string | null;
-  effective_date: string | null;
-  published_date: string | null;
-  source_name: string;
-  source_url: string;
-  updated_at: string;
-  created_at: string;
-  urgency_rank?: number;
-};
-
 function parsePaging(value: unknown, defaultValue: number, maxValue?: number): number {
   if (value === undefined) {
     return defaultValue;
   }
 
   const parsed = Number.parseInt(String(value), 10);
-  if (Number.isNaN(parsed)) {
-    return defaultValue;
-  }
-
-  if (parsed <= 0) {
+  if (Number.isNaN(parsed) || parsed <= 0) {
     return defaultValue;
   }
 
@@ -99,6 +90,17 @@ function parseStageList(value: string | undefined): Stage[] {
     .filter(Boolean) as Stage[];
 
   return requested.filter((value) => allowedStages.includes(value));
+}
+
+function parseAgeBracketList(value: string | undefined): AgeBracket[] {
+  if (!value) return [];
+
+  const requested = value
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean) as AgeBracket[];
+
+  return requested.filter((value) => allowedAgeBrackets.includes(value));
 }
 
 function parseSingleInt(value: unknown, min?: number, max?: number): number | undefined {
@@ -122,15 +124,21 @@ function parseSingleInt(value: unknown, min?: number, max?: number): number | un
   return parsed;
 }
 
+function toNullableState(value: string): string | null {
+  const trimmed = (value ?? "").trim();
+  return trimmed === "" ? null : trimmed;
+}
+
 function mapEvent(row: DbEventRow) {
   return {
     id: row.id,
     title: row.title,
     jurisdiction: {
       country: row.jurisdiction_country,
-      state: row.jurisdiction_state,
+      state: toNullableState(row.jurisdiction_state),
     },
     stage: row.stage,
+    ageBracket: row.age_bracket,
     isUnder16Applicable: Boolean(row.is_under16_applicable),
     scores: {
       impact: row.impact_score,
@@ -144,9 +152,11 @@ function mapEvent(row: DbEventRow) {
     source: {
       name: row.source_name,
       url: row.source_url,
+      reliabilityTier: row.source_reliability_tier,
     },
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    lastCrawledAt: row.last_crawled_at,
   };
 }
 
@@ -158,14 +168,17 @@ function createBriefSelect(sqlLimit: number): string {
       e.jurisdiction_country,
       e.jurisdiction_state,
       e.stage,
+      e.age_bracket,
       e.is_under16_applicable,
       e.chili_score,
       e.summary,
       e.source_id,
       s.name AS source_name,
       s.url AS source_url,
+      s.reliability_tier AS source_reliability_tier,
       e.updated_at,
       e.created_at,
+      e.last_crawled_at,
       e.impact_score,
       e.likelihood_score,
       e.confidence_score,
@@ -193,7 +206,22 @@ function createBriefSelect(sqlLimit: number): string {
   `;
 }
 
-export function createApp(db: DatabaseConstructor.Database) {
+function parseSourceIds(req: Request): string[] | undefined {
+  if (!Array.isArray(req.body?.sourceIds)) {
+    return undefined;
+  }
+
+  const sourceIds = req.body.sourceIds.filter((value) => typeof value === "string");
+  return sourceIds.length > 0 ? sourceIds : [];
+}
+
+export function createApp(
+  db: DatabaseConstructor.Database,
+  options: {
+    runIngestion?: typeof runIngestionPipeline;
+  } = {},
+) {
+  const runIngestion = options.runIngestion ?? runIngestionPipeline;
   const app = express();
   app.use(express.json());
 
@@ -201,7 +229,7 @@ export function createApp(db: DatabaseConstructor.Database) {
     res.json({
       status: "ok",
       timestamp: new Date().toISOString(),
-      version: "v1",
+      version: "v2",
     });
   });
 
@@ -216,6 +244,7 @@ export function createApp(db: DatabaseConstructor.Database) {
 
     res.json({
       generatedAt: new Date().toISOString(),
+      lastCrawledAt: getLastCrawlTime(db),
       items,
       total: rows.length,
       limit,
@@ -225,6 +254,8 @@ export function createApp(db: DatabaseConstructor.Database) {
   app.get("/api/events", (req: Request, res: Response) => {
     const jurisdiction = typeof req.query.jurisdiction === "string" ? req.query.jurisdiction.trim() : undefined;
     const stageRaw = typeof req.query.stage === "string" ? req.query.stage : undefined;
+    const ageBracketRaw =
+      typeof req.query.ageBracket === "string" ? req.query.ageBracket : undefined;
     const minRisk = parseSingleInt(req.query.minRisk, 1, 5);
 
     if (req.query.minRisk !== undefined && minRisk === undefined) {
@@ -240,6 +271,11 @@ export function createApp(db: DatabaseConstructor.Database) {
       return res.status(400).json({ error: "stage must use valid lifecycle values" });
     }
 
+    const requestedAgeBrackets = parseAgeBracketList(ageBracketRaw);
+    if (ageBracketRaw !== undefined && requestedAgeBrackets.length === 0) {
+      return res.status(400).json({ error: "ageBracket must use valid values" });
+    }
+
     const whereClauses: string[] = [];
     const params: (string | number)[] = [];
 
@@ -252,6 +288,12 @@ export function createApp(db: DatabaseConstructor.Database) {
       const placeholders = requestedStages.map(() => "?").join(", ");
       whereClauses.push(`e.stage IN (${placeholders})`);
       params.push(...requestedStages);
+    }
+
+    if (requestedAgeBrackets.length > 0) {
+      const placeholders = requestedAgeBrackets.map(() => "?").join(", ");
+      whereClauses.push(`e.age_bracket IN (${placeholders})`);
+      params.push(...requestedAgeBrackets);
     }
 
     if (minRisk !== undefined) {
@@ -274,6 +316,7 @@ export function createApp(db: DatabaseConstructor.Database) {
         e.jurisdiction_country,
         e.jurisdiction_state,
         e.stage,
+        e.age_bracket,
         e.is_under16_applicable,
         e.impact_score,
         e.likelihood_score,
@@ -284,14 +327,16 @@ export function createApp(db: DatabaseConstructor.Database) {
         e.published_date,
         e.updated_at,
         e.created_at,
+        e.last_crawled_at,
         s.name AS source_name,
-        s.url AS source_url
+        s.url AS source_url,
+        s.reliability_tier AS source_reliability_tier
       FROM regulation_events e
       JOIN sources s ON s.id = e.source_id
       ${where}
       ORDER BY e.updated_at DESC, e.id ASC
       LIMIT ? OFFSET ?
-    `
+    `,
       )
       .all(...params, limit, offset) as DbEventRow[];
 
@@ -300,6 +345,7 @@ export function createApp(db: DatabaseConstructor.Database) {
       page,
       limit,
       total,
+      lastCrawledAt: getLastCrawlTime(db),
       totalPages: Math.max(1, Math.ceil(total / limit)),
     });
   });
@@ -315,6 +361,7 @@ export function createApp(db: DatabaseConstructor.Database) {
         e.jurisdiction_country,
         e.jurisdiction_state,
         e.stage,
+        e.age_bracket,
         e.is_under16_applicable,
         e.impact_score,
         e.likelihood_score,
@@ -325,12 +372,14 @@ export function createApp(db: DatabaseConstructor.Database) {
         e.published_date,
         e.updated_at,
         e.created_at,
+        e.last_crawled_at,
         s.name AS source_name,
-        s.url AS source_url
+        s.url AS source_url,
+        s.reliability_tier AS source_reliability_tier
       FROM regulation_events e
       JOIN sources s ON s.id = e.source_id
       WHERE e.id = ?
-    `
+    `,
       )
       .get(id) as DbEventRow | undefined;
 
@@ -345,7 +394,7 @@ export function createApp(db: DatabaseConstructor.Database) {
       FROM feedback
       WHERE event_id = ?
       ORDER BY created_at DESC, id DESC
-      `
+      `,
       )
       .all(id) as FeedbackRow[];
 
@@ -390,5 +439,28 @@ export function createApp(db: DatabaseConstructor.Database) {
     });
   });
 
+  app.post("/api/crawl", async (req: Request, res: Response) => {
+    try {
+      const sourceIds = parseSourceIds(req);
+      const summary = await runIngestion(db, sourceIds ? { sourceIds } : undefined);
+      res.json(summary);
+    } catch (error) {
+      console.error("Crawl failed", error);
+      const message = error instanceof Error ? error.message : "crawl failed";
+      res.status(500).json({ error: message });
+    }
+  });
+
   return app;
+}
+
+async function runIngestion(
+  db: DatabaseConstructor.Database,
+  options: { sourceIds?: string[] } | undefined,
+): Promise<CrawlSummary> {
+  if (options?.sourceIds?.length) {
+    return runIngestionPipeline(db, { sourceIds: options.sourceIds });
+  }
+
+  return runIngestionPipeline(db);
 }

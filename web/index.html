@@ -15,7 +15,7 @@
   <header>
     <div class="header-content">
       <h1>Global Under-16 Regulation Dashboard</h1>
-      <p class="last-updated">Last updated: <span id="last-updated">Loading...</span></p>
+      <p class="last-updated">Last crawled: <span id="last-updated">Loading...</span></p>
     </div>
   </header>
 
@@ -45,11 +45,21 @@
               <option value="2">2+ 🌶️</option>
               <option value="3">3+ 🌶️</option>
               <option value="4">4+ 🌶️</option>
-              <option value="5">5 🌶️</option>
+                <option value="5">5 🌶️</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label for="age-bracket-filter">Age bracket:</label>
+            <select id="age-bracket-filter">
+              <option value="">All</option>
+              <option value="13-15">13-15</option>
+              <option value="16-18">16-18</option>
+              <option value="both">Both</option>
             </select>
           </div>
           <button onclick="applyFilters()" class="btn-primary">Apply Filters</button>
           <button onclick="clearFilters()" class="btn-secondary">Clear</button>
+          <button onclick="runCrawl()" class="btn-secondary">Run Crawl</button>
         </div>
       </div>
 
