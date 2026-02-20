@@ -5,6 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.createApp = createApp;
 const express_1 = __importDefault(require("express"));
+const node_path_1 = __importDefault(require("node:path"));
 const ingest_1 = require("./ingest");
 const db_1 = require("./db");
 const allowedStages = [
@@ -169,6 +170,7 @@ function createApp(db, options = {}) {
     const runIngestion = options.runIngestion ?? ingest_1.runIngestionPipeline;
     const app = (0, express_1.default)();
     app.use(express_1.default.json());
+    app.use(express_1.default.static(node_path_1.default.join(process.cwd(), "web")));
     app.get("/api/health", (req, res) => {
         res.json({
             status: "ok",

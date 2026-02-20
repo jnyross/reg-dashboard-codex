@@ -1,4 +1,5 @@
 import express, { Request, Response } from "express";
+import path from "node:path";
 import DatabaseConstructor from "better-sqlite3";
 import { runIngestionPipeline, CrawlSummary } from "./ingest";
 import { getLastCrawlTime, Stage, AgeBracket } from "./db";
@@ -224,6 +225,7 @@ export function createApp(
   const runIngestion = options.runIngestion ?? runIngestionPipeline;
   const app = express();
   app.use(express.json());
+  app.use(express.static(path.join(process.cwd(), "web")));
 
   app.get("/api/health", (req: Request, res: Response) => {
     res.json({
