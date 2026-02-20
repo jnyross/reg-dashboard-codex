@@ -168,8 +168,8 @@ function normalizeScore(value: number): number {
   return value;
 }
 
-function dedupeKey(country: string, state: string, sourceUrl: string, title: string): string {
-  const normalized = `${country.toLowerCase()}|${state.toLowerCase()}|${sourceUrl.toLowerCase()}|${title.toLowerCase()}`;
+function dedupeKey(country: string, state: string, title: string): string {
+  const normalized = `${country.toLowerCase()}|${state.toLowerCase()}|${title.toLowerCase()}`;
   return normalized;
 }
 
@@ -360,13 +360,14 @@ export function upsertRegulationEvent(db: DatabaseConstructor.Database, event: R
       FROM regulation_events
       WHERE jurisdiction_country = ?
         AND jurisdiction_state = ?
-        AND source_url = ?
-        AND title = ?
+        AND lower(title) = lower(?)
+      ORDER BY updated_at DESC
+      LIMIT 1
       `,
     )
-    .get(country, state, event.sourceUrl, event.title) as RegulationEventDbRow | undefined;
+    .get(country, state, event.title) as RegulationEventDbRow | undefined;
 
-  const eventId = deterministicEventId(dedupeKey(country, state, event.sourceUrl, event.title));
+  const eventId = deterministicEventId(dedupeKey(country, state, event.title));
 
   const normalized: RegulationEventInput = {
     ...event,

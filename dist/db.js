@@ -59,8 +59,8 @@ function normalizeScore(value) {
     }
     return value;
 }
-function dedupeKey(country, state, sourceUrl, title) {
-    const normalized = `${country.toLowerCase()}|${state.toLowerCase()}|${sourceUrl.toLowerCase()}|${title.toLowerCase()}`;
+function dedupeKey(country, state, title) {
+    const normalized = `${country.toLowerCase()}|${state.toLowerCase()}|${title.toLowerCase()}`;
     return normalized;
 }
 function deterministicEventId(dedupe) {
@@ -236,11 +236,12 @@ function upsertRegulationEvent(db, event) {
       FROM regulation_events
       WHERE jurisdiction_country = ?
         AND jurisdiction_state = ?
-        AND source_url = ?
-        AND title = ?
+        AND lower(title) = lower(?)
+      ORDER BY updated_at DESC
+      LIMIT 1
       `)
-        .get(country, state, event.sourceUrl, event.title);
-    const eventId = deterministicEventId(dedupeKey(country, state, event.sourceUrl, event.title));
+        .get(country, state, event.title);
+    const eventId = deterministicEventId(dedupeKey(country, state, event.title));
     const normalized = {
         ...event,
         stage: event.stage,

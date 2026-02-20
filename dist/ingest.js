@@ -121,9 +121,10 @@ async function upsertAnalysedItem(db, item, analysis) {
     return result.status;
 }
 async function runIngestionPipeline(db, options = {}) {
+    const allSources = [...sources_1.sourceRegistry, ...sources_1.twitterSearchSources];
     const selectedSources = options.sourceIds?.length
-        ? sources_1.sourceRegistry.filter((source) => options.sourceIds?.includes(source.id))
-        : sources_1.sourceRegistry;
+        ? allSources.filter((source) => options.sourceIds?.includes(source.id))
+        : allSources;
     const runId = (0, db_1.createCrawlRun)(db);
     const startedAt = new Date().toISOString();
     const sourceErrors = [];
@@ -148,8 +149,8 @@ async function runIngestionPipeline(db, options = {}) {
             }
             sourcesSuccess += 1;
         }
-        // Analyze in concurrent batches of 5, then write sequentially to SQLite
-        const BATCH_SIZE = 5;
+        // Analyze in concurrent batches (10+), then write sequentially to SQLite
+        const BATCH_SIZE = Math.max(10, Number(process.env.ANALYSIS_CONCURRENCY || 12));
         for (let i = 0; i < crawlResult.items.length; i += BATCH_SIZE) {
             const batch = crawlResult.items.slice(i, i + BATCH_SIZE);
             const results = await Promise.allSettled(batch.map(async (item, idx) => {

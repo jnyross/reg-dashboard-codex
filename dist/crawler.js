@@ -2,8 +2,13 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.crawlSources = crawlSources;
 const sources_1 = require("./sources");
+const twitter_crawler_1 = require("./twitter-crawler");
 const USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
 const DEFAULT_TIMEOUT_MS = 30_000;
+const TWITTER_DELAY_MS = 1_500;
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
 async function fetchWithTimeout(url) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
@@ -126,9 +131,8 @@ function parseWebPage(sourceText, source) {
     if (!title && !body) {
         return [];
     }
-    // If body is too thin, add source metadata for context
     const enrichedBody = body.length < 200
-        ? `Source: ${source.name}\nNotes: ${source.notes || ''}\n\n${body}`
+        ? `Source: ${source.name}\nNotes: ${source.notes || ""}\n\n${body}`
         : body;
     return [
         {
@@ -141,7 +145,7 @@ function parseWebPage(sourceText, source) {
     ];
 }
 function isAllowedKind(kind) {
-    return kind === "webpage" || kind === "rss" || kind === "news_search";
+    return kind === "webpage" || kind === "rss" || kind === "news_search" || kind === "twitter_search";
 }
 async function crawlSource(source) {
     if (!isAllowedKind(source.kind)) {
@@ -153,6 +157,24 @@ async function crawlSource(source) {
         };
     }
     try {
+        if (source.kind === "twitter_search") {
+            const bearerToken = process.env.X_BEARER_TOKEN;
+            if (!bearerToken) {
+                return {
+                    sourceId: source.id,
+                    itemCount: 0,
+                    error: "X_BEARER_TOKEN not set",
+                    items: [],
+                };
+            }
+            const twitterItems = await (0, twitter_crawler_1.crawlTwitterRecentSearch)(source, bearerToken);
+            return {
+                sourceId: source.id,
+                itemCount: twitterItems.length,
+                error: null,
+                items: twitterItems,
+            };
+        }
         const payload = await fetchWithTimeout(source.url);
         const items = source.kind === "webpage" ? parseWebPage(payload, source) : parseFeedText(payload, source.url);
         return {
@@ -171,10 +193,22 @@ async function crawlSource(source) {
         };
     }
 }
-async function crawlSources(sources = sources_1.sourceRegistry) {
+function dedupeCrawledItems(items) {
+    const deduped = new Map();
+    for (const item of items) {
+        const key = `${item.url.toLowerCase()}::${item.title.toLowerCase()}`;
+        if (!deduped.has(key)) {
+            deduped.set(key, item);
+        }
+    }
+    return [...deduped.values()];
+}
+async function crawlSources(sources = [...sources_1.sourceRegistry, ...sources_1.twitterSearchSources]) {
     const allItems = [];
     const sourceResults = [];
-    const sourceRuns = await Promise.all(sources.map(crawlSource));
+    const nonTwitterSources = sources.filter((source) => source.kind !== "twitter_search");
+    const twitterSources = sources.filter((source) => source.kind === "twitter_search");
+    const sourceRuns = await Promise.all(nonTwitterSources.map(crawlSource));
     for (const run of sourceRuns) {
         const source = sources.find((entry) => entry.id === run.sourceId);
         if (!source) {
@@ -199,6 +233,31 @@ async function crawlSources(sources = sources_1.sourceRegistry) {
             });
         }
     }
-    return { items: allItems, sourceResults };
+    for (let i = 0; i < twitterSources.length; i++) {
+        const source = twitterSources[i];
+        const run = await crawlSource(source);
+        sourceResults.push({
+            sourceId: run.sourceId,
+            itemCount: run.itemCount,
+            error: run.error,
+        });
+        for (const item of run.items) {
+            const normalizedUrl = normalizeUrl(item.url, source.url);
+            if (!normalizedUrl) {
+                continue;
+            }
+            allItems.push({
+                ...item,
+                title: item.title.trim(),
+                url: normalizedUrl,
+                source,
+                provenanceLinks: [source.url, normalizedUrl].filter((value) => Boolean(value)),
+            });
+        }
+        if (i < twitterSources.length - 1) {
+            await sleep(TWITTER_DELAY_MS);
+        }
+    }
+    return { items: dedupeCrawledItems(allItems), sourceResults };
 }
 //# sourceMappingURL=crawler.js.map

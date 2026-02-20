@@ -1,4 +1,5 @@
-import { sourceRegistry, SourceRecord, SourceKind } from "./sources";
+import { sourceRegistry, twitterSearchSources, SourceRecord, SourceKind } from "./sources";
+import { crawlTwitterRecentSearch } from "./twitter-crawler";
 
 export type CrawlInput = {
   title: string;
@@ -26,6 +27,11 @@ export type CrawlResult = {
 
 const USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
 const DEFAULT_TIMEOUT_MS = 30_000;
+const TWITTER_DELAY_MS = 1_500;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 async function fetchWithTimeout(url: string): Promise<string> {
   const controller = new AbortController();
@@ -169,9 +175,8 @@ function parseWebPage(sourceText: string, source: SourceRecord): CrawlInput[] {
     return [];
   }
 
-  // If body is too thin, add source metadata for context
-  const enrichedBody = body.length < 200 
-    ? `Source: ${source.name}\nNotes: ${source.notes || ''}\n\n${body}`
+  const enrichedBody = body.length < 200
+    ? `Source: ${source.name}\nNotes: ${source.notes || ""}\n\n${body}`
     : body;
 
   return [
@@ -186,7 +191,7 @@ function parseWebPage(sourceText: string, source: SourceRecord): CrawlInput[] {
 }
 
 function isAllowedKind(kind: string): kind is SourceKind {
-  return kind === "webpage" || kind === "rss" || kind === "news_search";
+  return kind === "webpage" || kind === "rss" || kind === "news_search" || kind === "twitter_search";
 }
 
 async function crawlSource(source: SourceRecord): Promise<CrawlSourceResult & { items: CrawlInput[] }> {
@@ -200,6 +205,26 @@ async function crawlSource(source: SourceRecord): Promise<CrawlSourceResult & { 
   }
 
   try {
+    if (source.kind === "twitter_search") {
+      const bearerToken = process.env.X_BEARER_TOKEN;
+      if (!bearerToken) {
+        return {
+          sourceId: source.id,
+          itemCount: 0,
+          error: "X_BEARER_TOKEN not set",
+          items: [],
+        };
+      }
+
+      const twitterItems = await crawlTwitterRecentSearch(source, bearerToken);
+      return {
+        sourceId: source.id,
+        itemCount: twitterItems.length,
+        error: null,
+        items: twitterItems,
+      };
+    }
+
     const payload = await fetchWithTimeout(source.url);
     const items = source.kind === "webpage" ? parseWebPage(payload, source) : parseFeedText(payload, source.url);
     return {
@@ -218,11 +243,25 @@ async function crawlSource(source: SourceRecord): Promise<CrawlSourceResult & { 
   }
 }
 
-export async function crawlSources(sources: SourceRecord[] = sourceRegistry): Promise<CrawlResult> {
+function dedupeCrawledItems(items: CrawledItem[]): CrawledItem[] {
+  const deduped = new Map<string, CrawledItem>();
+  for (const item of items) {
+    const key = `${item.url.toLowerCase()}::${item.title.toLowerCase()}`;
+    if (!deduped.has(key)) {
+      deduped.set(key, item);
+    }
+  }
+  return [...deduped.values()];
+}
+
+export async function crawlSources(sources: SourceRecord[] = [...sourceRegistry, ...twitterSearchSources]): Promise<CrawlResult> {
   const allItems: CrawledItem[] = [];
   const sourceResults: CrawlSourceResult[] = [];
 
-  const sourceRuns = await Promise.all(sources.map(crawlSource));
+  const nonTwitterSources = sources.filter((source) => source.kind !== "twitter_search");
+  const twitterSources = sources.filter((source) => source.kind === "twitter_search");
+
+  const sourceRuns = await Promise.all(nonTwitterSources.map(crawlSource));
   for (const run of sourceRuns) {
     const source = sources.find((entry) => entry.id === run.sourceId);
     if (!source) {
@@ -251,5 +290,34 @@ export async function crawlSources(sources: SourceRecord[] = sourceRegistry): Pr
     }
   }
 
-  return { items: allItems, sourceResults };
+  for (let i = 0; i < twitterSources.length; i++) {
+    const source = twitterSources[i];
+    const run = await crawlSource(source);
+    sourceResults.push({
+      sourceId: run.sourceId,
+      itemCount: run.itemCount,
+      error: run.error,
+    });
+
+    for (const item of run.items) {
+      const normalizedUrl = normalizeUrl(item.url, source.url);
+      if (!normalizedUrl) {
+        continue;
+      }
+
+      allItems.push({
+        ...item,
+        title: item.title.trim(),
+        url: normalizedUrl,
+        source,
+        provenanceLinks: [source.url, normalizedUrl].filter((value) => Boolean(value)),
+      });
+    }
+
+    if (i < twitterSources.length - 1) {
+      await sleep(TWITTER_DELAY_MS);
+    }
+  }
+
+  return { items: dedupeCrawledItems(allItems), sourceResults };
 }
