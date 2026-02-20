@@ -1,5 +1,10 @@
 node_modules/
 dist/
-*.sqlite
-*.db
 .DS_Store
+*.db
+# Keep data/*.sqlite (the crawled regulation data)
+# Ignore backup/temp SQLite files
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+data/*.pre-fix-backup.*
