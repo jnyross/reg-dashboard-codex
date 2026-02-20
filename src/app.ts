@@ -211,7 +211,7 @@ function parseSourceIds(req: Request): string[] | undefined {
     return undefined;
   }
 
-  const sourceIds = req.body.sourceIds.filter((value) => typeof value === "string");
+  const sourceIds = req.body.sourceIds.filter((value: unknown) => typeof value === "string");
   return sourceIds.length > 0 ? sourceIds : [];
 }
 
