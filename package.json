@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsx watch src/index.ts",
-    "start": "node dist/index.js",
+    "start": "node dist/src/index.js",
     "crawl": "tsx src/cli.ts crawl",
     "test": "jest"
   },
