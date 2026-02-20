@@ -774,7 +774,7 @@ function createApp(db, options = {}) {
         });
     });
     app.patch("/api/events/:id", (req, res) => {
-        const { id } = req.params;
+        const id = String(req.params.id);
         const existing = db.prepare("SELECT stage FROM regulation_events WHERE id = ?").get(id);
         if (!existing) {
             return res.status(404).json({ error: "event not found" });
@@ -884,14 +884,14 @@ function createApp(db, options = {}) {
         return res.json(detail);
     });
     app.get("/api/events/:id", (req, res) => {
-        const detail = getEventDetail(db, req.params.id);
+        const detail = getEventDetail(db, String(req.params.id));
         if (!detail) {
             return res.status(404).json({ error: "event not found" });
         }
         return res.json(detail);
     });
     app.post("/api/events/:id/feedback", (req, res) => {
-        const { id } = req.params;
+        const id = String(req.params.id);
         const body = req.body;
         const rating = typeof body.rating === "string" ? body.rating.toLowerCase() : "";
         const note = typeof body.note === "string" ? body.note.trim() : undefined;
@@ -1024,7 +1024,7 @@ function createApp(db, options = {}) {
         });
     });
     app.get("/api/reports/jurisdiction/:country", (req, res) => {
-        const country = req.params.country.trim().toLowerCase();
+        const country = String(req.params.country).trim().toLowerCase();
         const events = listMappedEvents(db)
             .filter((event) => !event.quality.lowQuality)
             .filter((event) => event.jurisdiction.country.toLowerCase() === country);
@@ -1095,7 +1095,7 @@ function createApp(db, options = {}) {
         });
     });
     app.delete("/api/saved-searches/:id", (req, res) => {
-        const id = Number.parseInt(req.params.id, 10);
+        const id = Number.parseInt(String(req.params.id), 10);
         if (Number.isNaN(id)) {
             return res.status(400).json({ error: "invalid saved search id" });
         }
@@ -1243,7 +1243,7 @@ function createApp(db, options = {}) {
         });
     });
     app.delete("/api/webhooks/:id", (req, res) => {
-        const id = Number.parseInt(req.params.id, 10);
+        const id = Number.parseInt(String(req.params.id), 10);
         if (Number.isNaN(id)) {
             return res.status(400).json({ error: "invalid webhook id" });
         }

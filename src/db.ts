@@ -242,6 +242,43 @@ export function initializeSchema(db: DatabaseConstructor.Database): void {
       FOREIGN KEY (event_id) REFERENCES regulation_events(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS event_annotations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_id TEXT NOT NULL,
+      note TEXT NOT NULL,
+      author TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (event_id) REFERENCES regulation_events(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS saved_searches (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      filters_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS digest_configs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT NOT NULL UNIQUE,
+      frequency TEXT NOT NULL CHECK (frequency IN ('daily', 'weekly')),
+      min_risk INTEGER NOT NULL CHECK (min_risk BETWEEN 1 AND 5),
+      enabled INTEGER NOT NULL CHECK (enabled IN (0,1)) DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS webhook_subscriptions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      url TEXT NOT NULL UNIQUE,
+      min_risk INTEGER NOT NULL CHECK (min_risk BETWEEN 1 AND 5),
+      secret TEXT,
+      enabled INTEGER NOT NULL CHECK (enabled IN (0,1)) DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS crawl_runs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       started_at TEXT NOT NULL,
@@ -265,6 +302,8 @@ export function initializeSchema(db: DatabaseConstructor.Database): void {
       ON regulation_events(jurisdiction_state);
     CREATE INDEX IF NOT EXISTS idx_feedback_event_id
       ON feedback(event_id);
+    CREATE INDEX IF NOT EXISTS idx_event_annotations_event_id
+      ON event_annotations(event_id);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_regulation_events_dedupe
       ON regulation_events(jurisdiction_country, jurisdiction_state, source_url, title);
     CREATE INDEX IF NOT EXISTS idx_status_changes_event_id

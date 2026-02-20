@@ -1,77 +1,172 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Global Under-16 Regulation Dashboard</title>
-  <link rel="stylesheet" href="styles.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CODEX — Regulatory Intelligence Platform</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
+  <script src="/app.js" defer></script>
 </head>
 <body>
-  <div id="error-banner" class="error-banner hidden">
-    <span id="error-message"></span>
-    <button onclick="hideError()">Dismiss</button>
+  <div class="app-shell">
+    <aside id="sidebar" class="sidebar">
+      <div class="brand">
+        <h1>CODEX</h1>
+        <p>Regulatory Intelligence</p>
+      </div>
+
+      <nav class="nav-menu">
+        <button class="nav-item active" data-page="dashboard"><span>📊</span><span class="nav-label">Dashboard</span></button>
+        <button class="nav-item" data-page="events"><span>🧾</span><span class="nav-label">Events</span></button>
+        <button class="nav-item" data-page="map"><span>🗺️</span><span class="nav-label">Risk Map</span></button>
+        <button class="nav-item" data-page="competitors"><span>🏢</span><span class="nav-label">Competitors</span></button>
+        <button class="nav-item" data-page="reports"><span>📄</span><span class="nav-label">Reports</span></button>
+      </nav>
+
+      <div class="sidebar-actions">
+        <button id="crawl-btn" class="nav-item action" onclick="runCrawl()"><span>🔄</span><span class="nav-label">Run Crawl</span></button>
+        <button class="nav-item action" onclick="toggleTheme()"><span id="theme-icon">🌙</span><span id="theme-label" class="nav-label">Dark Mode</span></button>
+      </div>
+    </aside>
+
+    <section class="main-shell">
+      <header class="topbar">
+        <button class="mobile-only" onclick="toggleSidebar()">☰</button>
+        <div>
+          <h2 class="page-title">Global Under-16 Regulation Dashboard</h2>
+          <p id="header-last-crawl" class="muted">Last crawled: loading...</p>
+        </div>
+        <button id="mobile-theme-btn" class="mobile-only" onclick="toggleTheme()">🌙</button>
+      </header>
+
+      <main class="main-content">
+        <section id="page-dashboard" class="page active">
+          <div class="status-row">
+            <div id="crawl-status" class="crawl-status">
+              <span class="status-dot"></span>
+              <span class="status-text">Loading crawl status...</span>
+            </div>
+          </div>
+
+          <div class="stats-grid">
+            <div class="stat-card"><div class="stat-label">Total Events</div><div id="stat-total" class="stat-value">—</div></div>
+            <div class="stat-card"><div class="stat-label">Average Risk</div><div id="stat-avg-risk" class="stat-value">—</div></div>
+            <div class="stat-card"><div class="stat-label">High Risk (4-5🌶️)</div><div id="stat-high-risk" class="stat-value">—</div></div>
+            <div class="stat-card"><div class="stat-label">Top Jurisdiction</div><div id="stat-top-jurisdiction" class="stat-value">—</div></div>
+          </div>
+
+          <div class="chart-grid">
+            <div class="panel"><h3>Trend (Monthly)</h3><div class="chart-wrap"><canvas id="trends-chart"></canvas></div></div>
+            <div class="panel"><h3>Risk Distribution</h3><div class="chart-wrap"><canvas id="risk-chart"></canvas></div></div>
+            <div class="panel"><h3>Jurisdictions</h3><div class="chart-wrap"><canvas id="jurisdiction-chart"></canvas></div></div>
+            <div class="panel"><h3>Stage Pipeline</h3><div class="chart-wrap"><canvas id="stage-chart"></canvas></div></div>
+          </div>
+
+          <div class="panel">
+            <h3>Priority Briefing</h3>
+            <div id="brief-container" class="brief-grid"><div class="empty-state">Loading briefing...</div></div>
+          </div>
+        </section>
+
+        <section id="page-events" class="page">
+          <div class="panel">
+            <div class="events-toolbar">
+              <input id="search-input" type="search" placeholder="Search title, summary, impact, competitors..." />
+              <select id="filter-jurisdiction"><option value="">All jurisdictions</option></select>
+              <select id="filter-stage">
+                <option value="">All stages</option>
+                <option value="proposed">Proposed</option>
+                <option value="introduced">Introduced</option>
+                <option value="committee_review">Committee review</option>
+                <option value="passed">Passed</option>
+                <option value="enacted">Enacted</option>
+                <option value="effective">Effective</option>
+                <option value="amended">Amended</option>
+                <option value="withdrawn">Withdrawn</option>
+                <option value="rejected">Rejected</option>
+              </select>
+              <select id="filter-min-risk">
+                <option value="">Any risk</option>
+                <option value="1">1+ 🌶️</option>
+                <option value="2">2+ 🌶️</option>
+                <option value="3">3+ 🌶️</option>
+                <option value="4">4+ 🌶️</option>
+                <option value="5">5 🌶️</option>
+              </select>
+              <select id="filter-age">
+                <option value="">All ages</option>
+                <option value="13-15">13-15</option>
+                <option value="16-18">16-18</option>
+                <option value="both">Both</option>
+              </select>
+              <select id="filter-sort">
+                <option value="updated_at">Recently updated</option>
+                <option value="risk_desc">Risk (high to low)</option>
+                <option value="risk_asc">Risk (low to high)</option>
+                <option value="jurisdiction_asc">Jurisdiction (A-Z)</option>
+                <option value="stage_asc">Stage</option>
+                <option value="date_asc">Date (oldest first)</option>
+              </select>
+              <input id="filter-date-from" type="date" />
+              <input id="filter-date-to" type="date" />
+            </div>
+
+            <div class="button-row">
+              <button class="btn" onclick="applyFilters()">Apply Filters</button>
+              <button class="btn secondary" onclick="clearFilters()">Clear</button>
+              <button class="btn secondary" onclick="saveCurrentSearch()">Save Search</button>
+              <button class="btn secondary" onclick="exportCsv()">Export CSV</button>
+              <button class="btn secondary" onclick="exportPdf()">Export PDF</button>
+            </div>
+
+            <div id="saved-searches" class="saved-searches"></div>
+
+            <p id="events-count" class="muted"></p>
+            <div id="events-container"><div class="empty-state">Loading events...</div></div>
+            <div id="pagination" class="pagination"></div>
+          </div>
+        </section>
+
+        <section id="page-map" class="page">
+          <div class="panel">
+            <h3>Risk Heatmap by Jurisdiction</h3>
+            <div id="heatmap-grid" class="heatmap-grid"><div class="empty-state">Loading map...</div></div>
+          </div>
+        </section>
+
+        <section id="page-competitors" class="page">
+          <div class="panel">
+            <h3>Competitor Intelligence</h3>
+            <div id="competitors-container"><div class="empty-state">Loading competitor responses...</div></div>
+          </div>
+        </section>
+
+        <section id="page-reports" class="page">
+          <div class="panel">
+            <h3>Reports</h3>
+            <div class="button-row">
+              <button class="btn" onclick="generateExecutiveBrief()">Executive Brief (TXT)</button>
+              <button class="btn" onclick="generateTrendReport()">Trend Analysis (TXT)</button>
+              <button class="btn" onclick="generateJurisdictionReport()">Jurisdiction Deep-Dive (TXT)</button>
+              <button class="btn secondary" onclick="exportPdf()">Executive Brief (PDF)</button>
+            </div>
+          </div>
+        </section>
+      </main>
+    </section>
   </div>
 
-  <header>
-    <div class="header-content">
-      <h1>Global Under-16 Regulation Dashboard</h1>
-      <p class="last-updated">Last crawled: <span id="last-updated">Loading...</span></p>
+  <div id="event-modal" class="modal" onclick="closeModalOverlay(event)">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="modal-title">Event Details</h3>
+        <button onclick="closeModal()">✕</button>
+      </div>
+      <div id="modal-body"></div>
     </div>
-  </header>
+  </div>
 
-  <main>
-    <section class="brief-section">
-      <h2>Just Read: Priority Briefing</h2>
-      <div id="brief-container" class="brief-grid">
-        <div class="loading">Loading brief...</div>
-      </div>
-    </section>
-
-    <section class="events-section">
-      <div class="section-header">
-        <h2>All Regulation Events</h2>
-        <div class="filters">
-          <div class="filter-group">
-            <label for="jurisdiction-filter">Jurisdiction:</label>
-            <select id="jurisdiction-filter">
-              <option value="">All Jurisdictions</option>
-            </select>
-          </div>
-          <div class="filter-group">
-            <label for="min-risk-filter">Min Risk:</label>
-            <select id="min-risk-filter">
-              <option value="">Any</option>
-              <option value="1">1+ 🌶️</option>
-              <option value="2">2+ 🌶️</option>
-              <option value="3">3+ 🌶️</option>
-              <option value="4">4+ 🌶️</option>
-                <option value="5">5 🌶️</option>
-            </select>
-          </div>
-          <div class="filter-group">
-            <label for="age-bracket-filter">Age bracket:</label>
-            <select id="age-bracket-filter">
-              <option value="">All</option>
-              <option value="13-15">13-15</option>
-              <option value="16-18">16-18</option>
-              <option value="both">Both</option>
-            </select>
-          </div>
-          <button onclick="applyFilters()" class="btn-primary">Apply Filters</button>
-          <button onclick="clearFilters()" class="btn-secondary">Clear</button>
-          <button onclick="runCrawl()" class="btn-secondary">Run Crawl</button>
-        </div>
-      </div>
-
-      <div id="events-container">
-        <div class="loading">Loading events...</div>
-      </div>
-
-      <div class="pagination" id="pagination">
-      </div>
-    </section>
-  </main>
-
-  <script src="app.js"></script>
+  <div id="toast-container" class="toast-container"></div>
 </body>
 </html>
