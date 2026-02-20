@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import {
   analyzeCrawledItem,
   AnalyzedItem,
@@ -120,6 +121,39 @@ function normalizeAffectedProducts(item: AnalyzedItem): string[] {
   return ["Meta Platforms", "Meta Ads Products"];
 }
 
+function sanitizeText(value: string): string {
+  return value
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isLowQualityAnalysis(item: CrawledItem, analysis: AnalyzedItem): boolean {
+  const summary = sanitizeText(analysis.summary || "");
+  const title = sanitizeText(item.title || "");
+  const raw = sanitizeText(item.rawText || "").toLowerCase();
+
+  if (!summary || summary.length < 60) {
+    return true;
+  }
+
+  if (/no specific regulatory details|source indicates|no details available/i.test(summary)) {
+    return true;
+  }
+
+  const hasRegulatoryKeyword = /(regulation|law|bill|act|guideline|compliance|enforcement|privacy|online safety|coppa|dsa|osa|kosa)/i.test(
+    `${title} ${summary} ${raw}`,
+  );
+
+  if (!hasRegulatoryKeyword) {
+    return true;
+  }
+
+  return false;
+}
+
 function estimatePublishedDate(item: CrawledItem): string | null {
   if (!item.publishedAt) {
     return null;
@@ -133,6 +167,30 @@ function estimatePublishedDate(item: CrawledItem): string | null {
   return parsed.toISOString().split("T")[0];
 }
 
+function normalizeForHash(value: string): string {
+  return value.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function hashText(value: string): string {
+  return crypto.createHash("sha1").update(normalizeForHash(value)).digest("hex");
+}
+
+function buildRegulationKey(item: CrawledItem, analysis: AnalyzedItem): string {
+  const jurisdiction = splitJurisdiction(analysis.jurisdiction || item.source.jurisdiction);
+  const country = normalizeForHash(jurisdiction.country || "unknown");
+  const state = normalizeForHash(jurisdiction.state || "");
+  const title = normalizeForHash(item.title || "untitled");
+  return `${country}|${state}|${title}`;
+}
+
+function buildDeduplicationKey(item: CrawledItem, analysis: AnalyzedItem): string {
+  const regulationKey = buildRegulationKey(item, analysis);
+  const normalizedUrl = item.url.trim().toLowerCase();
+  const textHash = hashText(item.rawText || `${item.title} ${item.summary}`);
+  const contentKey = normalizedUrl || `text:${textHash}`;
+  return `${regulationKey}::${contentKey}`;
+}
+
 async function upsertAnalysedItem(db: DatabaseConstructor.Database, item: CrawledItem, analysis: AnalyzedItem): Promise<
   | "created"
   | "updated"
@@ -144,9 +202,13 @@ async function upsertAnalysedItem(db: DatabaseConstructor.Database, item: Crawle
     return "ignored";
   }
 
+  if (isLowQualityAnalysis(item, analysis)) {
+    return "ignored";
+  }
+
   const jurisdiction = splitJurisdiction(analysis.jurisdiction || item.source.jurisdiction);
   const result = upsertRegulationEvent(db, {
-    title: item.title,
+    title: sanitizeText(item.title),
     jurisdictionCountry: jurisdiction.country,
     jurisdictionState: jurisdiction.state,
     stage: mapStage(analysis),
@@ -156,8 +218,8 @@ async function upsertAnalysedItem(db: DatabaseConstructor.Database, item: Crawle
     likelihoodScore: analysis.likelihoodScore,
     confidenceScore: analysis.confidenceScore,
     chiliScore: analysis.chiliScore,
-    summary: analysis.summary,
-    businessImpact: analysis.businessImpact,
+    summary: sanitizeText(analysis.summary),
+    businessImpact: sanitizeText(analysis.businessImpact),
     requiredSolutions: normalizeRequiredSolutions(analysis),
     affectedMetaProducts: normalizeAffectedProducts(analysis),
     competitorResponses: normalizeCompetitorResponses(analysis),
@@ -194,6 +256,7 @@ export async function runIngestionPipeline(
   let eventsUpdated = 0;
   let eventsStatusChanged = 0;
   let eventsIgnored = 0;
+  const seenDeduplicationKeys = new Set<string>();
 
   try {
     const crawlResult = await crawlSources(selectedSources);
@@ -235,6 +298,13 @@ export async function runIngestionPipeline(
           continue;
         }
         const { item, analysis } = result.value;
+        const deduplicationKey = buildDeduplicationKey(item, analysis);
+        if (seenDeduplicationKeys.has(deduplicationKey)) {
+          eventsIgnored += 1;
+          continue;
+        }
+        seenDeduplicationKeys.add(deduplicationKey);
+
         try {
           const upsertStatus = await upsertAnalysedItem(db, item, analysis);
           if (upsertStatus === "created") { eventsCreated += 1; console.log(`    → Created: ${item.title.slice(0, 60)}`); }

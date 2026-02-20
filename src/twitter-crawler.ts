@@ -29,9 +29,100 @@ type TwitterResponse = {
 };
 
 const TWITTER_ENDPOINT = "https://api.twitter.com/2/tweets/search/recent";
+const TWITTER_TIMEOUT_MS = Number(process.env.X_API_TIMEOUT_MS || 30_000);
+const TWITTER_MAX_RETRIES = Number(process.env.X_API_MAX_RETRIES || 4);
+const TWITTER_BASE_BACKOFF_MS = Number(process.env.X_API_BASE_BACKOFF_MS || 1_500);
+const TWITTER_MAX_BACKOFF_MS = Number(process.env.X_API_MAX_BACKOFF_MS || 30_000);
 
 function normalizeText(text: string): string {
   return text.replace(/\s+/g, " ").trim();
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetriableStatus(status: number): boolean {
+  return status === 429 || status === 408 || (status >= 500 && status <= 599);
+}
+
+function getRateLimitDelayMs(headers: Headers): number | null {
+  const resetHeader = headers.get("x-rate-limit-reset");
+  if (!resetHeader) {
+    return null;
+  }
+
+  const resetEpochSeconds = Number(resetHeader);
+  if (!Number.isFinite(resetEpochSeconds)) {
+    return null;
+  }
+
+  const resetMs = resetEpochSeconds * 1000;
+  const delay = resetMs - Date.now();
+  return delay > 0 ? delay : 0;
+}
+
+async function fetchRecentTweetsWithRetry(requestUrl: URL, bearerToken: string): Promise<Response> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= TWITTER_MAX_RETRIES; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TWITTER_TIMEOUT_MS);
+
+    try {
+      const response = await fetch(requestUrl.toString(), {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${bearerToken}`,
+          Accept: "application/json",
+        },
+        signal: controller.signal,
+      });
+
+      if (response.ok) {
+        return response;
+      }
+
+      const responseBody = await response.text().catch(() => "");
+      const retriable = isRetriableStatus(response.status);
+      const message = `X API ${response.status}: ${responseBody.slice(0, 200)}`;
+
+      if (!retriable || attempt === TWITTER_MAX_RETRIES) {
+        throw new Error(message);
+      }
+
+      const retryAfterSeconds = Number(response.headers.get("retry-after") || "0");
+      const retryAfterMs = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+        ? retryAfterSeconds * 1000
+        : 0;
+      const rateLimitDelayMs = getRateLimitDelayMs(response.headers) ?? 0;
+      const exponentialBackoffMs = Math.min(
+        TWITTER_BASE_BACKOFF_MS * 2 ** (attempt - 1),
+        TWITTER_MAX_BACKOFF_MS,
+      );
+      const waitMs = Math.max(exponentialBackoffMs, retryAfterMs, rateLimitDelayMs);
+
+      await sleep(waitMs);
+      continue;
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      lastError = err;
+
+      if (attempt === TWITTER_MAX_RETRIES) {
+        break;
+      }
+
+      const waitMs = Math.min(
+        TWITTER_BASE_BACKOFF_MS * 2 ** (attempt - 1),
+        TWITTER_MAX_BACKOFF_MS,
+      );
+      await sleep(waitMs);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  throw lastError ?? new Error("X API request failed");
 }
 
 function buildTweetUrl(tweetId: string, username?: string): string {
@@ -48,22 +139,11 @@ export async function crawlTwitterRecentSearch(source: SourceRecord, bearerToken
   const requestUrl = new URL(TWITTER_ENDPOINT);
   requestUrl.searchParams.set("query", query);
   requestUrl.searchParams.set("max_results", "100");
-  requestUrl.searchParams.set("tweet.fields", "created_at,author_id,public_metrics,entities");
+  requestUrl.searchParams.set("tweet.fields", "created_at,author_id,public_metrics");
   requestUrl.searchParams.set("expansions", "author_id");
-  requestUrl.searchParams.set("user.fields", "name,username,verified");
+  requestUrl.searchParams.set("user.fields", "name,username");
 
-  const response = await fetch(requestUrl.toString(), {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${bearerToken}`,
-      Accept: "application/json",
-    },
-  });
-
-  if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    throw new Error(`X API ${response.status}: ${body.slice(0, 200)}`);
-  }
+  const response = await fetchRecentTweetsWithRetry(requestUrl, bearerToken);
 
   const payload = (await response.json()) as TwitterResponse;
   const users = new Map<string, TwitterUser>((payload.includes?.users ?? []).map((u) => [u.id, u]));

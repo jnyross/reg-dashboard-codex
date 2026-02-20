@@ -1,6 +1,10 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.crawlSources = crawlSources;
+const node_crypto_1 = __importDefault(require("node:crypto"));
 const sources_1 = require("./sources");
 const twitter_crawler_1 = require("./twitter-crawler");
 const USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
@@ -68,6 +72,8 @@ function parseTag(xml, tag) {
 function decodeEntities(raw) {
     return raw
         .replace(/&apos;/g, "'")
+        .replace(/&#039;/g, "'")
+        .replace(/&#x27;/g, "'")
         .replace(/&quot;/g, '"')
         .replace(/&nbsp;/g, " ")
         .replace(/&amp;/g, "&")
@@ -193,10 +199,20 @@ async function crawlSource(source) {
         };
     }
 }
+function normalizeTextForHash(text) {
+    return text.replace(/\s+/g, " ").trim().toLowerCase();
+}
+function hashText(text) {
+    return node_crypto_1.default.createHash("sha1").update(normalizeTextForHash(text)).digest("hex");
+}
 function dedupeCrawledItems(items) {
     const deduped = new Map();
     for (const item of items) {
-        const key = `${item.url.toLowerCase()}::${item.title.toLowerCase()}`;
+        const normalizedUrl = item.url.trim().toLowerCase();
+        const textHash = hashText(item.rawText || `${item.title} ${item.summary}`);
+        const key = normalizedUrl
+            ? `${item.source.id}::${normalizedUrl}`
+            : `${item.source.id}::text:${textHash}`;
         if (!deduped.has(key)) {
             deduped.set(key, item);
         }

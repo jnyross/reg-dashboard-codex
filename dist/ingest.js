@@ -1,6 +1,10 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.runIngestionPipeline = runIngestionPipeline;
+const node_crypto_1 = __importDefault(require("node:crypto"));
 const analyzer_1 = require("./analyzer");
 const sources_1 = require("./sources");
 const crawler_1 = require("./crawler");
@@ -77,6 +81,30 @@ function normalizeAffectedProducts(item) {
     }
     return ["Meta Platforms", "Meta Ads Products"];
 }
+function sanitizeText(value) {
+    return value
+        .replace(/<script[\s\S]*?<\/script>/gi, " ")
+        .replace(/<style[\s\S]*?<\/style>/gi, " ")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+function isLowQualityAnalysis(item, analysis) {
+    const summary = sanitizeText(analysis.summary || "");
+    const title = sanitizeText(item.title || "");
+    const raw = sanitizeText(item.rawText || "").toLowerCase();
+    if (!summary || summary.length < 60) {
+        return true;
+    }
+    if (/no specific regulatory details|source indicates|no details available/i.test(summary)) {
+        return true;
+    }
+    const hasRegulatoryKeyword = /(regulation|law|bill|act|guideline|compliance|enforcement|privacy|online safety|coppa|dsa|osa|kosa)/i.test(`${title} ${summary} ${raw}`);
+    if (!hasRegulatoryKeyword) {
+        return true;
+    }
+    return false;
+}
 function estimatePublishedDate(item) {
     if (!item.publishedAt) {
         return null;
@@ -87,13 +115,36 @@ function estimatePublishedDate(item) {
     }
     return parsed.toISOString().split("T")[0];
 }
+function normalizeForHash(value) {
+    return value.replace(/\s+/g, " ").trim().toLowerCase();
+}
+function hashText(value) {
+    return node_crypto_1.default.createHash("sha1").update(normalizeForHash(value)).digest("hex");
+}
+function buildRegulationKey(item, analysis) {
+    const jurisdiction = splitJurisdiction(analysis.jurisdiction || item.source.jurisdiction);
+    const country = normalizeForHash(jurisdiction.country || "unknown");
+    const state = normalizeForHash(jurisdiction.state || "");
+    const title = normalizeForHash(item.title || "untitled");
+    return `${country}|${state}|${title}`;
+}
+function buildDeduplicationKey(item, analysis) {
+    const regulationKey = buildRegulationKey(item, analysis);
+    const normalizedUrl = item.url.trim().toLowerCase();
+    const textHash = hashText(item.rawText || `${item.title} ${item.summary}`);
+    const contentKey = normalizedUrl || `text:${textHash}`;
+    return `${regulationKey}::${contentKey}`;
+}
 async function upsertAnalysedItem(db, item, analysis) {
     if (!analysis.isRelevant) {
         return "ignored";
     }
+    if (isLowQualityAnalysis(item, analysis)) {
+        return "ignored";
+    }
     const jurisdiction = splitJurisdiction(analysis.jurisdiction || item.source.jurisdiction);
     const result = (0, db_1.upsertRegulationEvent)(db, {
-        title: item.title,
+        title: sanitizeText(item.title),
         jurisdictionCountry: jurisdiction.country,
         jurisdictionState: jurisdiction.state,
         stage: mapStage(analysis),
@@ -103,8 +154,8 @@ async function upsertAnalysedItem(db, item, analysis) {
         likelihoodScore: analysis.likelihoodScore,
         confidenceScore: analysis.confidenceScore,
         chiliScore: analysis.chiliScore,
-        summary: analysis.summary,
-        businessImpact: analysis.businessImpact,
+        summary: sanitizeText(analysis.summary),
+        businessImpact: sanitizeText(analysis.businessImpact),
         requiredSolutions: normalizeRequiredSolutions(analysis),
         affectedMetaProducts: normalizeAffectedProducts(analysis),
         competitorResponses: normalizeCompetitorResponses(analysis),
@@ -135,6 +186,7 @@ async function runIngestionPipeline(db, options = {}) {
     let eventsUpdated = 0;
     let eventsStatusChanged = 0;
     let eventsIgnored = 0;
+    const seenDeduplicationKeys = new Set();
     try {
         const crawlResult = await (0, crawler_1.crawlSources)(selectedSources);
         for (const result of crawlResult.sourceResults) {
@@ -169,6 +221,12 @@ async function runIngestionPipeline(db, options = {}) {
                     continue;
                 }
                 const { item, analysis } = result.value;
+                const deduplicationKey = buildDeduplicationKey(item, analysis);
+                if (seenDeduplicationKeys.has(deduplicationKey)) {
+                    eventsIgnored += 1;
+                    continue;
+                }
+                seenDeduplicationKeys.add(deduplicationKey);
                 try {
                     const upsertStatus = await upsertAnalysedItem(db, item, analysis);
                     if (upsertStatus === "created") {

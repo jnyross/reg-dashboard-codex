@@ -22,10 +22,9 @@ function buildTestApp() {
     sourceErrors: [],
   };
 
-  const runIngestion = jest.fn<
-    (db: typeof db, options?: { sourceIds?: string[] }) => Promise<CrawlSummary>
-  >()
-    .mockResolvedValue(mockSummary);
+  const runIngestion = jest.fn().mockResolvedValue(mockSummary) as jest.MockedFunction<
+    (db: ReturnType<typeof openDatabase>, options?: { sourceIds?: string[] }) => Promise<CrawlSummary>
+  >;
 
   const app = createApp(db, { runIngestion });
   return { app, runIngestion, db };

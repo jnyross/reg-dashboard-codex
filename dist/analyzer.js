@@ -237,8 +237,11 @@ function heuristicFallback(item) {
     };
 }
 async function analyzeCrawledItem(item, apiKey = process.env.MINIMAX_API_KEY) {
-    if (!apiKey || minimaxAuthFailed) {
-        return heuristicFallback(item);
+    if (!apiKey) {
+        return analyzePayloadDefaults(item.title);
+    }
+    if (minimaxAuthFailed) {
+        return analyzePayloadDefaults(item.title);
     }
     const snippet = [item.summary, item.rawText].filter(Boolean).join("\n\n").slice(0, 5000);
     const prompt = analysisPromptTemplate

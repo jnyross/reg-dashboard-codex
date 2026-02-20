@@ -290,8 +290,12 @@ function heuristicFallback(item: CrawledItem): AnalyzedItem {
 }
 
 export async function analyzeCrawledItem(item: CrawledItem, apiKey = process.env.MINIMAX_API_KEY): Promise<AnalyzedItem> {
-  if (!apiKey || minimaxAuthFailed) {
-    return heuristicFallback(item);
+  if (!apiKey) {
+    return analyzePayloadDefaults(item.title);
+  }
+
+  if (minimaxAuthFailed) {
+    return analyzePayloadDefaults(item.title);
   }
 
   const snippet = [item.summary, item.rawText].filter(Boolean).join("\n\n").slice(0, 5000);

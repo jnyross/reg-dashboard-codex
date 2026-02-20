@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { sourceRegistry, twitterSearchSources, SourceRecord, SourceKind } from "./sources";
 import { crawlTwitterRecentSearch } from "./twitter-crawler";
 
@@ -99,6 +100,8 @@ function parseTag(xml: string, tag: string): string | null {
 function decodeEntities(raw: string): string {
   return raw
     .replace(/&apos;/g, "'")
+    .replace(/&#039;/g, "'")
+    .replace(/&#x27;/g, "'")
     .replace(/&quot;/g, '"')
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&")
@@ -243,10 +246,23 @@ async function crawlSource(source: SourceRecord): Promise<CrawlSourceResult & { 
   }
 }
 
+function normalizeTextForHash(text: string): string {
+  return text.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function hashText(text: string): string {
+  return crypto.createHash("sha1").update(normalizeTextForHash(text)).digest("hex");
+}
+
 function dedupeCrawledItems(items: CrawledItem[]): CrawledItem[] {
   const deduped = new Map<string, CrawledItem>();
   for (const item of items) {
-    const key = `${item.url.toLowerCase()}::${item.title.toLowerCase()}`;
+    const normalizedUrl = item.url.trim().toLowerCase();
+    const textHash = hashText(item.rawText || `${item.title} ${item.summary}`);
+    const key = normalizedUrl
+      ? `${item.source.id}::${normalizedUrl}`
+      : `${item.source.id}::text:${textHash}`;
+
     if (!deduped.has(key)) {
       deduped.set(key, item);
     }
