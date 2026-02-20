@@ -40,9 +40,10 @@ describe("E2E platform features", () => {
     expect(response.headers["x-total-pages"]).toBeDefined();
     expect(Array.isArray(response.body.items)).toBe(true);
 
-    response.body.items.forEach((item: { scores: { chili: number } }) => {
+    response.body.items.forEach((item: { scores: { chili: number }; jurisdiction: { state: string | null } }) => {
       expect(item.scores.chili).toBeGreaterThanOrEqual(2);
       expect(item.scores.chili).toBeLessThanOrEqual(5);
+      expect(item.jurisdiction.state === "" ? null : item.jurisdiction.state).not.toBe("");
     });
 
     db.close();
