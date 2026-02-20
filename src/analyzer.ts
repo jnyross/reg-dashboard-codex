@@ -53,6 +53,8 @@ const stageFallback: Array<[RegExp, RegulationStage]> = [
   [/rejected|failed|veto/i, "rejected"],
 ];
 
+let minimaxAuthFailed = false;
+
 const analysisPromptTemplate = `You are an AI legal analyst for global tech regulation.
 
 You are given one crawled source item that may describe online safety regulation.
@@ -260,9 +262,36 @@ function analyzePayloadDefaults(title: string): AnalyzedItem {
   };
 }
 
-export async function analyzeCrawledItem(item: CrawledItem, apiKey = process.env.MINIMAX_API_KEY): Promise<AnalyzedItem> {
-  if (!apiKey) {
+function heuristicFallback(item: CrawledItem): AnalyzedItem {
+  const text = `${item.title}\n${item.summary}\n${item.rawText}`.toLowerCase();
+  const hasChildSignal = /(child|children|teen|minor|under\s*1[368]|youth|coppa)/.test(text);
+  const hasRegulatorySignal = /(regulation|law|bill|legislation|act|guideline|compliance|dsa|kosa|online safety|age verification|parental consent|enforcement|commission|parliament|senate|congress)/.test(text);
+  const relevant = hasChildSignal && hasRegulatorySignal;
+
+  if (!relevant) {
     return analyzePayloadDefaults(item.title);
+  }
+
+  return {
+    isRelevant: true,
+    jurisdiction: item.source.jurisdiction,
+    stage: normalizeStage(text),
+    ageBracket: /(under\s*1[356]|13-15|under\s*16)/.test(text) ? "13-15" : "both",
+    affectedMetaProducts: ["Facebook", "Instagram", "WhatsApp"],
+    summary: `${item.title}. ${item.summary}`.slice(0, 1200),
+    businessImpact: "Potential child-safety compliance impact requiring legal and policy review.",
+    requiredSolutions: ["Policy review", "Age-assurance controls", "Regulatory monitoring"],
+    competitorResponses: [],
+    impactScore: 3,
+    likelihoodScore: 3,
+    confidenceScore: 2,
+    chiliScore: 3,
+  };
+}
+
+export async function analyzeCrawledItem(item: CrawledItem, apiKey = process.env.MINIMAX_API_KEY): Promise<AnalyzedItem> {
+  if (!apiKey || minimaxAuthFailed) {
+    return heuristicFallback(item);
   }
 
   const snippet = [item.summary, item.rawText].filter(Boolean).join("\n\n").slice(0, 5000);
@@ -271,15 +300,17 @@ export async function analyzeCrawledItem(item: CrawledItem, apiKey = process.env
     .replace("{{source}}", item.source.name)
     .replace("{{snippet}}", snippet);
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 60_000);
-
-  let response: Response;
-  let payload: unknown;
   try {
-    response = await fetch("https://api.minimax.io/anthropic/v1/messages", {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 60_000);
+
+    let response: Response;
+    let payload: unknown;
+    try {
+      response = await fetch("https://api.minimax.io/anthropic/v1/messages", {
       method: "POST",
       headers: {
+        Authorization: `Bearer ${apiKey}`,
         "x-api-key": apiKey,
         "Content-Type": "application/json",
         "anthropic-version": "2023-06-01",
@@ -324,26 +355,34 @@ export async function analyzeCrawledItem(item: CrawledItem, apiKey = process.env
       : item.source.jurisdiction;
 
   return {
-    isRelevant,
-    jurisdiction,
-    stage: normalizeStage(typeof parsed.stage === "string" ? parsed.stage : ""),
-    ageBracket: normalizeAgeBracket(typeof parsed.ageBracket === "string" ? parsed.ageBracket : undefined),
-    affectedMetaProducts: sanitizeStringList(parsed.affectedMetaProducts).length
-      ? sanitizeStringList(parsed.affectedMetaProducts)
-      : ["Meta Family of Products"],
-    summary: typeof parsed.summary === "string" && parsed.summary.trim()
-      ? parsed.summary.trim()
-      : `Teen-related relevance note for ${item.title}`,
-    businessImpact: typeof parsed.businessImpact === "string" && parsed.businessImpact.trim()
-      ? parsed.businessImpact.trim()
-      : "Medium",
-    requiredSolutions: sanitizeStringList(parsed.requiredSolutions),
-    competitorResponses: sanitizeStringList(parsed.competitorResponses),
-    impactScore: normalizeScore(parsed.impactScore),
-    likelihoodScore: normalizeScore(parsed.likelihoodScore),
-    confidenceScore: normalizeScore(parsed.confidenceScore),
-    chiliScore: normalizeScore(parsed.chiliScore),
-  };
+      isRelevant,
+      jurisdiction,
+      stage: normalizeStage(typeof parsed.stage === "string" ? parsed.stage : ""),
+      ageBracket: normalizeAgeBracket(typeof parsed.ageBracket === "string" ? parsed.ageBracket : undefined),
+      affectedMetaProducts: sanitizeStringList(parsed.affectedMetaProducts).length
+        ? sanitizeStringList(parsed.affectedMetaProducts)
+        : ["Meta Family of Products"],
+      summary: typeof parsed.summary === "string" && parsed.summary.trim()
+        ? parsed.summary.trim()
+        : `Teen-related relevance note for ${item.title}`,
+      businessImpact: typeof parsed.businessImpact === "string" && parsed.businessImpact.trim()
+        ? parsed.businessImpact.trim()
+        : "Medium",
+      requiredSolutions: sanitizeStringList(parsed.requiredSolutions),
+      competitorResponses: sanitizeStringList(parsed.competitorResponses),
+      impactScore: normalizeScore(parsed.impactScore),
+      likelihoodScore: normalizeScore(parsed.likelihoodScore),
+      confidenceScore: normalizeScore(parsed.confidenceScore),
+      chiliScore: normalizeScore(parsed.chiliScore),
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/\b401\b|authentication_error|login fail/i.test(message)) {
+      minimaxAuthFailed = true;
+    }
+    console.warn(`[analyzer] Falling back to heuristic analysis for \"${item.title}\": ${message}`);
+    return heuristicFallback(item);
+  }
 }
 
 export { analysisPromptTemplate, normalizeAgeBracket, normalizeStage, normalizeScore };

@@ -27,6 +27,7 @@ const stageFallback = [
     [/withdrawn|withdraw/i, "withdrawn"],
     [/rejected|failed|veto/i, "rejected"],
 ];
+let minimaxAuthFailed = false;
 const analysisPromptTemplate = `You are an AI legal analyst for global tech regulation.
 
 You are given one crawled source item that may describe online safety regulation.
@@ -211,80 +212,115 @@ function analyzePayloadDefaults(title) {
         chiliScore: 1,
     };
 }
-async function analyzeCrawledItem(item, apiKey = process.env.MINIMAX_API_KEY) {
-    if (!apiKey) {
+function heuristicFallback(item) {
+    const text = `${item.title}\n${item.summary}\n${item.rawText}`.toLowerCase();
+    const hasChildSignal = /(child|children|teen|minor|under\s*1[368]|youth|coppa)/.test(text);
+    const hasRegulatorySignal = /(regulation|law|bill|legislation|act|guideline|compliance|dsa|kosa|online safety|age verification|parental consent|enforcement|commission|parliament|senate|congress)/.test(text);
+    const relevant = hasChildSignal && hasRegulatorySignal;
+    if (!relevant) {
         return analyzePayloadDefaults(item.title);
+    }
+    return {
+        isRelevant: true,
+        jurisdiction: item.source.jurisdiction,
+        stage: normalizeStage(text),
+        ageBracket: /(under\s*1[356]|13-15|under\s*16)/.test(text) ? "13-15" : "both",
+        affectedMetaProducts: ["Facebook", "Instagram", "WhatsApp"],
+        summary: `${item.title}. ${item.summary}`.slice(0, 1200),
+        businessImpact: "Potential child-safety compliance impact requiring legal and policy review.",
+        requiredSolutions: ["Policy review", "Age-assurance controls", "Regulatory monitoring"],
+        competitorResponses: [],
+        impactScore: 3,
+        likelihoodScore: 3,
+        confidenceScore: 2,
+        chiliScore: 3,
+    };
+}
+async function analyzeCrawledItem(item, apiKey = process.env.MINIMAX_API_KEY) {
+    if (!apiKey || minimaxAuthFailed) {
+        return heuristicFallback(item);
     }
     const snippet = [item.summary, item.rawText].filter(Boolean).join("\n\n").slice(0, 5000);
     const prompt = analysisPromptTemplate
         .replace("{{title}}", item.title)
         .replace("{{source}}", item.source.name)
         .replace("{{snippet}}", snippet);
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 60_000);
-    let response;
-    let payload;
     try {
-        response = await fetch("https://api.minimax.io/anthropic/v1/messages", {
-            method: "POST",
-            headers: {
-                "x-api-key": apiKey,
-                "Content-Type": "application/json",
-                "anthropic-version": "2023-06-01",
-            },
-            body: JSON.stringify({
-                model: "MiniMax-M2.5",
-                messages: [
-                    {
-                        role: "user",
-                        content: prompt,
-                    },
-                ],
-                max_tokens: 2048,
-            }),
-            signal: controller.signal,
-        });
-        if (!response.ok) {
-            const errBody = await response.text().catch(() => "");
-            throw new Error(`MiniMax API request failed with ${response.status} ${response.statusText}: ${errBody.slice(0, 200)}`);
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 60_000);
+        let response;
+        let payload;
+        try {
+            response = await fetch("https://api.minimax.io/anthropic/v1/messages", {
+                method: "POST",
+                headers: {
+                    Authorization: `Bearer ${apiKey}`,
+                    "x-api-key": apiKey,
+                    "Content-Type": "application/json",
+                    "anthropic-version": "2023-06-01",
+                },
+                body: JSON.stringify({
+                    model: "MiniMax-M2.5",
+                    messages: [
+                        {
+                            role: "user",
+                            content: prompt,
+                        },
+                    ],
+                    max_tokens: 2048,
+                }),
+                signal: controller.signal,
+            });
+            if (!response.ok) {
+                const errBody = await response.text().catch(() => "");
+                throw new Error(`MiniMax API request failed with ${response.status} ${response.statusText}: ${errBody.slice(0, 200)}`);
+            }
+            payload = await response.json();
         }
-        payload = await response.json();
+        finally {
+            clearTimeout(timer);
+        }
+        const rawText = extractTextFromModelResponse(payload);
+        if (!rawText) {
+            throw new Error("MiniMax API returned no analyzable text content");
+        }
+        const parsed = parseResponseJson(rawText);
+        if (!parsed) {
+            throw new Error("MiniMax API response could not be parsed as JSON");
+        }
+        const isRelevant = Boolean(parsed.isRelevant);
+        const jurisdiction = typeof parsed.jurisdiction === "string" && parsed.jurisdiction.trim()
+            ? parsed.jurisdiction.trim()
+            : item.source.jurisdiction;
+        return {
+            isRelevant,
+            jurisdiction,
+            stage: normalizeStage(typeof parsed.stage === "string" ? parsed.stage : ""),
+            ageBracket: normalizeAgeBracket(typeof parsed.ageBracket === "string" ? parsed.ageBracket : undefined),
+            affectedMetaProducts: sanitizeStringList(parsed.affectedMetaProducts).length
+                ? sanitizeStringList(parsed.affectedMetaProducts)
+                : ["Meta Family of Products"],
+            summary: typeof parsed.summary === "string" && parsed.summary.trim()
+                ? parsed.summary.trim()
+                : `Teen-related relevance note for ${item.title}`,
+            businessImpact: typeof parsed.businessImpact === "string" && parsed.businessImpact.trim()
+                ? parsed.businessImpact.trim()
+                : "Medium",
+            requiredSolutions: sanitizeStringList(parsed.requiredSolutions),
+            competitorResponses: sanitizeStringList(parsed.competitorResponses),
+            impactScore: normalizeScore(parsed.impactScore),
+            likelihoodScore: normalizeScore(parsed.likelihoodScore),
+            confidenceScore: normalizeScore(parsed.confidenceScore),
+            chiliScore: normalizeScore(parsed.chiliScore),
+        };
     }
-    finally {
-        clearTimeout(timer);
+    catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (/\b401\b|authentication_error|login fail/i.test(message)) {
+            minimaxAuthFailed = true;
+        }
+        console.warn(`[analyzer] Falling back to heuristic analysis for \"${item.title}\": ${message}`);
+        return heuristicFallback(item);
     }
-    const rawText = extractTextFromModelResponse(payload);
-    if (!rawText) {
-        throw new Error("MiniMax API returned no analyzable text content");
-    }
-    const parsed = parseResponseJson(rawText);
-    if (!parsed) {
-        throw new Error("MiniMax API response could not be parsed as JSON");
-    }
-    const isRelevant = Boolean(parsed.isRelevant);
-    const jurisdiction = typeof parsed.jurisdiction === "string" && parsed.jurisdiction.trim()
-        ? parsed.jurisdiction.trim()
-        : item.source.jurisdiction;
-    return {
-        isRelevant,
-        jurisdiction,
-        stage: normalizeStage(typeof parsed.stage === "string" ? parsed.stage : ""),
-        ageBracket: normalizeAgeBracket(typeof parsed.ageBracket === "string" ? parsed.ageBracket : undefined),
-        affectedMetaProducts: sanitizeStringList(parsed.affectedMetaProducts).length
-            ? sanitizeStringList(parsed.affectedMetaProducts)
-            : ["Meta Family of Products"],
-        summary: typeof parsed.summary === "string" && parsed.summary.trim()
-            ? parsed.summary.trim()
-            : `Teen-related relevance note for ${item.title}`,
-        businessImpact: typeof parsed.businessImpact === "string" && parsed.businessImpact.trim()
-            ? parsed.businessImpact.trim()
-            : "Medium",
-        requiredSolutions: sanitizeStringList(parsed.requiredSolutions),
-        competitorResponses: sanitizeStringList(parsed.competitorResponses),
-        impactScore: normalizeScore(parsed.impactScore),
-        likelihoodScore: normalizeScore(parsed.likelihoodScore),
-        confidenceScore: normalizeScore(parsed.confidenceScore),
-        chiliScore: normalizeScore(parsed.chiliScore),
-    };
 }
 //# sourceMappingURL=analyzer.js.map
